@@ -23,9 +23,13 @@ to quickly create a Cobra application.`,
 		graph := graph.Graph{}
 		graph.SubscriptionIDs, _ = cmd.Flags().GetStringSlice("subscriptionIDs")
 		graph.IgnoreResourceIDPatterns, _ = cmd.Flags().GetStringSlice("ignoreResourceIDPatterns")
-		graph.GetResources()
 
 		importer := importer.Importer{}
+		importer.TerraformModulePath, _ = cmd.Flags().GetString("terraformModulePath")
+		importer.SubscriptionID = graph.SubscriptionIDs[0]
+		importer.IgnoreResourceTypePatterns, _ = cmd.Flags().GetStringSlice("ignoreResourceTypePatterns")
+		importer.SkipInitPlanShow, _ = cmd.Flags().GetBool("skipInitPlanShow")
+		importer.GraphResources, _ = graph.GetResources()
 		importer.Import()
 	},
 }
@@ -45,4 +49,7 @@ func init() {
 
 	runCmd.Flags().StringSliceP("subscriptionIDs", "s", nil, "Subscription IDs to use")
 	runCmd.Flags().StringSliceP("ignoreResourceIDPatterns", "i", nil, "Resource ID patterns to ignore")
+	runCmd.Flags().StringSliceP("ignoreResourceTypePatterns", "r", nil, "Resource type patterns to ignore")
+	runCmd.Flags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
+	runCmd.Flags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
 }

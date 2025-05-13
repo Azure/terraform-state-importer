@@ -14,13 +14,19 @@ type Graph struct {
 	IgnoreResourceIDPatterns []string
 }
 
-func (graph *Graph) GetResources() ([]armresources.GenericResourceExpanded, error) {
+type Resource struct {
+	ID string
+	Type string
+	Name string
+}
+
+func (graph *Graph) GetResources() ([]Resource, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	resources := []armresources.GenericResourceExpanded{}
+	resources := []Resource{}
 
 	for _, subscriptionID := range graph.SubscriptionIDs {
 		fmt.Printf("Checking Subscription ID: %s\n", subscriptionID)
@@ -55,7 +61,12 @@ func (graph *Graph) GetResources() ([]armresources.GenericResourceExpanded, erro
 					continue
 				}
 				fmt.Printf("Adding Resource ID: %s\n", *resource.ID)
-				resources = append(resources, *resource)
+				resourceResult := Resource{
+					ID:   *resource.ID,
+					Type: *resource.Type,
+					Name: *resource.Name,
+				}
+				resources = append(resources, resourceResult)
 			}
 		}
 	}
