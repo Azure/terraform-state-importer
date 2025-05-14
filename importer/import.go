@@ -19,7 +19,14 @@ type Importer struct{
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow bool
 	GraphResources []graph.Resource
+	NameFormats []NameFormat
 	Logger *logrus.Logger
+}
+
+type NameFormat struct {
+	Type string
+	NameFormat string
+	NameFormatArguments []string
 }
 
 type Resource struct {
@@ -31,6 +38,20 @@ type Resource struct {
 	Properties map[string]interface{}
 	PropertiesCalculated map[string]interface{}
 }
+
+type ResourceIssue struct {
+	Resource Resource
+	IssueType IssueType
+}
+
+type IssueType string
+
+const (
+	IssueTypeNone IssueType = "None"
+	IssueTypeNoResourceID IssueType = "NoResourceID"
+	IssueTypeMultipleResourceIDs IssueType = "MultipleResourceIDs"
+	IssueTypeUnusedResourceID IssueType = "UnusedResourceID"
+)
 
 func (importer *Importer) Import() {
 	backendOverrideFilePath := importer.createBackendOverrideFile()
@@ -46,23 +67,51 @@ func (importer *Importer) Import() {
 	plan := importer.loadJSONFromFile(jsonFilePath)
 
 	resources := []Resource{}
-
 	resources = importer.mapResources(plan, resources)
 
-	importer.exportResourcesToJSON(resources, jsonFilePath)
+	issues := []ResourceIssue{}
+	uniqueUsedResourceIDs := make(map[string]bool)
 
+	for _, resource := range resources {
+		if len(resource.MappedResourceIDs) == 0 {
+			importer.Logger.Warnf("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
+			issues = append(issues, ResourceIssue{Resource: resource, IssueType: IssueTypeNoResourceID})
+			continue
+		}
+
+		for _, resourceID := range resource.MappedResourceIDs {
+			if _, exists := uniqueUsedResourceIDs[resourceID]; !exists {
+				uniqueUsedResourceIDs[resourceID] = true
+			}
+		}
+
+		if len(resource.MappedResourceIDs) > 1 {
+			importer.Logger.Warnf("More than 1 Resource ID has been matched for Name: %s, Type: %s, Address: %s -> %v", resource.ResourceName, resource.Type, resource.Address, resource.MappedResourceIDs)
+			issues = append(issues, ResourceIssue{Resource: resource, IssueType: IssueTypeMultipleResourceIDs})
+		}
+	}
+
+	for _, graphResource := range importer.GraphResources {
+		if _, exists := uniqueUsedResourceIDs[graphResource.ID]; !exists {
+			importer.Logger.Warnf("Resource ID %s is not used in the Terraform plan", graphResource.ID)
+			issues = append(issues, ResourceIssue{Resource: Resource{MappedResourceIDs: []string{ graphResource.ID }}, IssueType: IssueTypeUnusedResourceID})
+		}
+	}
+
+	exportToJSON(resources, "resources.json", importer.TerraformModulePath, importer.Logger)
+	exportToJSON(issues, "issues.json", importer.TerraformModulePath, importer.Logger)
 	importer.removeBackendOverrideFile(backendOverrideFilePath)
 }
 
-func (importer *Importer) exportResourcesToJSON(resources []Resource, jsonFilePath string) {
+func exportToJSON[V Resource | ResourceIssue](resources []V, fileName string, modulePath string, logger *logrus.Logger) {
 	jsonResources, err := json.Marshal(resources)
 	if err != nil {
-		importer.Logger.Fatal("Error during Marshal(): ", err)
+		logger.Fatal("Error during Marshal(): ", err)
 	}
-	jsonFilePath = filepath.Join(importer.TerraformModulePath, "resources.json")
+	jsonFilePath := filepath.Join(modulePath, fileName)
 	err = os.WriteFile(jsonFilePath, jsonResources, 0644)
 	if err != nil {
-		importer.Logger.Fatal("Error writing file: ", err)
+		logger.Fatal("Error writing file: ", err)
 	}
 }
 
@@ -101,17 +150,33 @@ func (importer *Importer) mapResources(plan map[string]interface{}, resources []
 		resource.Properties = resourceChange["change"].(map[string]interface{})["after"].(map[string]interface{})
 		resource.PropertiesCalculated = resourceChange["change"].(map[string]interface{})["after_unknown"].(map[string]interface{})
 
-		if resource.Type == "azurerm_log_analytics_solution" {
-			solutionName := resource.Properties["solution_name"].(string)
-			workSpaceName := resource.Properties["workspace_name"].(string)
-			resourceName := fmt.Sprintf("%s(%s)", solutionName, workSpaceName)
-			resource.ResourceName = resourceName
-		} else {
-			if val, ok := resource.Properties["name"]; ok {
-				resource.ResourceName = val.(string)
-			} else {
-				importer.Logger.Warnf("Resource %s does not have a name property", resource.Address)
+		foundName := false
+
+		if val, ok := resource.Properties["name"]; ok {
+			resource.ResourceName = val.(string)
+			foundName = true
+		}
+
+		if !foundName {
+			for _, nameFormat := range importer.NameFormats {
+				if nameFormat.Type == resource.Type {
+					nameFormatArguments := []interface{}{}
+					for _, arg := range nameFormat.NameFormatArguments {
+						if val, ok := resource.Properties[arg]; ok {
+							nameFormatArguments = append(nameFormatArguments, val.(string))
+						} else {
+							importer.Logger.Debugf("Name format argument %s not found in resource properties", arg)
+						}
+					}
+
+					resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
+					foundName = true
+				}
 			}
+		}
+
+		if !foundName {
+			importer.Logger.Tracef("Resource %s does not have a name property or mapped name property", resource.Address)
 		}
 
 		foundResourceID := false
@@ -124,7 +189,7 @@ func (importer *Importer) mapResources(plan map[string]interface{}, resources []
 		}
 
 		if !foundResourceID {
-			importer.Logger.Warnf("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
+			importer.Logger.Tracef("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
 		}
 
 		resources = append(resources, resource)

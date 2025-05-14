@@ -4,10 +4,17 @@ subscriptionIDs:
 ignoreResourceIDPatterns:
   - "resourceGroups/Default-ActivityLogAlerts"
   - "resourceGroups/NetworkWatcherRG"
+  - "Microsoft.OperationsManagement/solutions/ChangeTracking"
+  - "Microsoft.OperationsManagement/solutions/SecurityInsights"
 ignoreResourceTypePatterns:
   - "random_uuid.telemetry"
   - "modtm"
   - "module.management_groups"
+  - "module.bastion"
+  - "module.dns_resolver"
+  - "azurerm_route"
+  - "azurerm_route_table"
+  - "module.private_dns_zone_auto_registration"
 resourceGraphQueries:
   - name: "Resource Groups"
     query: |
@@ -32,3 +39,9 @@ resourceGraphQueries:
       | project id, name, type, location, subscriptionId, resourceGroup, peerings = properties.virtualNetworkPeerings
       | mv-expand peerings
       | project name = tostring(peerings.name), id = tostring(peerings.id), type = tostring(peerings.type), location, subscriptionId, resourceGroup
+nameFormats:
+  - type: azurerm_log_analytics_solution
+    nameFormat: "%s(%s)"
+    nameFormatArguments:
+      - solution_name
+      - workspace_name

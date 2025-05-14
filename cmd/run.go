@@ -31,10 +31,13 @@ to quickly create a Cobra application.`,
 			log.Fatalf("Invalid log level: %s", logVerbosity)
 		}
 		log.SetLevel(logLevel)
-		log.SetFormatter(&logrus.JSONFormatter{})
+		log.SetFormatter(&logrus.TextFormatter{})
+		if viper.GetBool("structuredLogs") {
+			log.SetFormatter(&logrus.JSONFormatter{})
+		}
 
 		for key, value := range viper.GetViper().AllSettings() {
-			log.Infof("Command Flag: %s = %s", key, value)
+			log.Debugf("Command Flag: %s = %s", key, value)
 		}
 
 		graphInstance := graph.Graph{}
@@ -49,16 +52,36 @@ to quickly create a Cobra application.`,
 				Query: queryMap["query"].(string),
 			})
 		}
+
+
+
 		graphInstance.Logger = log
 
-		importer := importer.Importer{}
-		importer.TerraformModulePath = viper.GetString("terraformModulePath")
-		importer.SubscriptionID = graphInstance.SubscriptionIDs[0]
-		importer.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
-		importer.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
-		importer.GraphResources, _ = graphInstance.GetResources()
-		importer.Logger = log
-		importer.Import()
+		importerInstance := importer.Importer{}
+		importerInstance.TerraformModulePath = viper.GetString("terraformModulePath")
+		importerInstance.SubscriptionID = graphInstance.SubscriptionIDs[0]
+		importerInstance.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
+		importerInstance.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
+		importerInstance.GraphResources, _ = graphInstance.GetResources()
+
+	    nameFormats := viper.Get("nameFormats").([]interface{})
+		for _, rawNameFormat := range nameFormats {
+			nameFormatMap := rawNameFormat.(map[string]interface{})
+			nameFormatArguments := []string{}
+
+			for _, arg := range nameFormatMap["nameformatarguments"].([]interface{}) {
+				nameFormatArguments = append(nameFormatArguments, arg.(string))
+			}
+
+			importerInstance.NameFormats = append(importerInstance.NameFormats, importer.NameFormat{
+				Type:  nameFormatMap["type"].(string),
+				NameFormat: nameFormatMap["nameformat"].(string),
+				NameFormatArguments: nameFormatArguments,
+			})
+		}
+
+		importerInstance.Logger = log
+		importerInstance.Import()
 	},
 }
 

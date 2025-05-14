@@ -67,6 +67,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.terraform-state-importer.yaml)")
 	rootCmd.PersistentFlags().StringP("verbosity", "v", logrus.InfoLevel.String(), "Logging Verbosity")
 	viper.BindPFlag("verbosity", rootCmd.PersistentFlags().Lookup("verbosity"))
+	rootCmd.PersistentFlags().BoolP("structuredLogs", "", false, "Log in JSON Format")
+	viper.BindPFlag("structuredLogs", rootCmd.PersistentFlags().Lookup("structuredLogs"))
 }
 
 // initConfig reads in config file and ENV variables if set.
