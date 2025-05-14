@@ -21,7 +21,9 @@ THE SOFTWARE.
 */
 package main
 
-import "github.com/azure/terraform-state-importer/cmd"
+import (
+  "github.com/azure/terraform-state-importer/cmd"
+)
 
 func main() {
 	cmd.Execute()

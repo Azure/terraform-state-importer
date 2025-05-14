@@ -2,8 +2,8 @@ package graph
 
 import (
 	"context"
-	"fmt"
 	"regexp"
+	"github.com/sirupsen/logrus"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -12,6 +12,7 @@ import (
 type Graph struct {
 	SubscriptionIDs          []string
 	IgnoreResourceIDPatterns []string
+	Logger *logrus.Logger
 }
 
 type Resource struct {
@@ -23,13 +24,13 @@ type Resource struct {
 func (graph *Graph) GetResources() ([]Resource, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		panic(err)
+		graph.Logger.Fatal(err)
 	}
 
 	resources := []Resource{}
 
 	for _, subscriptionID := range graph.SubscriptionIDs {
-		fmt.Printf("Checking Subscription ID: %s\n", subscriptionID)
+		graph.Logger.Infof("Checking Subscription ID: %s\n", subscriptionID)
 
 		resources = graph.getResourceGroups(subscriptionID, cred, resources)
 		resources = graph.getResources(subscriptionID, cred, resources)
@@ -41,21 +42,21 @@ func (graph *Graph) GetResources() ([]Resource, error) {
 func (graph *Graph) getResourceGroups(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []Resource) []Resource {
 	resourceGroupsClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
 	if err != nil {
-		panic(err)
+	    graph.Logger.Fatal(err)
 	}
 
 	pager := resourceGroupsClient.NewListPager(nil)
 	for pager.More() {
 		page, err := pager.NextPage(context.Background())
 		if err != nil {
-			panic(err)
+			graph.Logger.Fatal(err)
 		}
 		for _, resourceGroup := range page.Value {
 			shouldIgnore := false
 			for _, pattern := range graph.IgnoreResourceIDPatterns {
 				matched, err := regexp.MatchString(pattern, *resourceGroup.ID)
 				if err != nil {
-					fmt.Printf("Error matching pattern %s: %v\n", pattern, err)
+					graph.Logger.Debugf("Error matching pattern %s: %v\n", pattern, err)
 					continue
 				}
 				if matched {
@@ -64,10 +65,10 @@ func (graph *Graph) getResourceGroups(subscriptionID string, cred *azidentity.De
 				}
 			}
 			if shouldIgnore {
-				fmt.Printf("Ignoring Resource ID: %s\n", *resourceGroup.ID)
+				graph.Logger.Tracef("Ignoring Resource ID: %s\n", *resourceGroup.ID)
 				continue
 			}
-			fmt.Printf("Adding Resource ID: %s\n", *resourceGroup.ID)
+			graph.Logger.Tracef("Adding Resource ID: %s\n", *resourceGroup.ID)
 			resourceResult := Resource{
 				ID:   *resourceGroup.ID,
 				Type: *resourceGroup.Type,
@@ -82,7 +83,7 @@ func (graph *Graph) getResourceGroups(subscriptionID string, cred *azidentity.De
 func (graph *Graph) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []Resource) []Resource {
 	resourcesClient, err := armresources.NewClient(subscriptionID, cred, nil)
 	if err != nil {
-		panic(err)
+		graph.Logger.Fatal(err)
 	}
 
 	pager := resourcesClient.NewListPager(nil)
@@ -90,7 +91,7 @@ func (graph *Graph) getResources(subscriptionID string, cred *azidentity.Default
 	for pager.More() {
 		page, err := pager.NextPage(context.Background())
 		if err != nil {
-			panic(err)
+			graph.Logger.Fatal(err)
 		}
 
 		for _, resource := range page.Value {
@@ -99,7 +100,7 @@ func (graph *Graph) getResources(subscriptionID string, cred *azidentity.Default
 			for _, pattern := range graph.IgnoreResourceIDPatterns {
 				matched, err := regexp.MatchString(pattern, *resource.ID)
 				if err != nil {
-					fmt.Printf("Error matching pattern %s: %v\n", pattern, err)
+					graph.Logger.Debugf("Error matching pattern %s: %v\n", pattern, err)
 					continue
 				}
 				if matched {
@@ -108,10 +109,10 @@ func (graph *Graph) getResources(subscriptionID string, cred *azidentity.Default
 				}
 			}
 			if shouldIgnore {
-				fmt.Printf("Ignoring Resource ID: %s\n", *resource.ID)
+				graph.Logger.Tracef("Ignoring Resource ID: %s\n", *resource.ID)
 				continue
 			}
-			fmt.Printf("Adding Resource ID: %s\n", *resource.ID)
+			graph.Logger.Tracef("Adding Resource ID: %s\n", *resource.ID)
 			resourceResult := Resource{
 				ID:   *resource.ID,
 				Type: *resource.Type,
