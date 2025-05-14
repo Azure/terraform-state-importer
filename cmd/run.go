@@ -9,6 +9,7 @@ import (
 	"github.com/azure/terraform-state-importer/graph"
 	"github.com/azure/terraform-state-importer/importer"
 	"github.com/spf13/cobra"
+ 	"github.com/spf13/viper"
 )
 
 var log = logrus.New()
@@ -32,17 +33,30 @@ to quickly create a Cobra application.`,
 		log.SetLevel(logLevel)
 		log.SetFormatter(&logrus.JSONFormatter{})
 
-		graph := graph.Graph{}
-		graph.SubscriptionIDs, _ = cmd.Flags().GetStringSlice("subscriptionIDs")
-		graph.IgnoreResourceIDPatterns, _ = cmd.Flags().GetStringSlice("ignoreResourceIDPatterns")
-		graph.Logger = log
+		for key, value := range viper.GetViper().AllSettings() {
+			log.Infof("Command Flag: %s = %s", key, value)
+		}
+
+		graphInstance := graph.Graph{}
+		graphInstance.SubscriptionIDs = viper.GetStringSlice("subscriptionIDs")
+		graphInstance.IgnoreResourceIDPatterns = viper.GetStringSlice("ignoreResourceIDPatterns")
+
+		rawQueries := viper.Get("resourceGraphQueries").([]interface{})
+		for _, rawQuery := range rawQueries {
+			queryMap := rawQuery.(map[string]interface{})
+			graphInstance.ResourceGraphQueries = append(graphInstance.ResourceGraphQueries, graph.ResourceGraphQuery{
+				Name:  queryMap["name"].(string),
+				Query: queryMap["query"].(string),
+			})
+		}
+		graphInstance.Logger = log
 
 		importer := importer.Importer{}
-		importer.TerraformModulePath, _ = cmd.Flags().GetString("terraformModulePath")
-		importer.SubscriptionID = graph.SubscriptionIDs[0]
-		importer.IgnoreResourceTypePatterns, _ = cmd.Flags().GetStringSlice("ignoreResourceTypePatterns")
-		importer.SkipInitPlanShow, _ = cmd.Flags().GetBool("skipInitPlanShow")
-		importer.GraphResources, _ = graph.GetResources()
+		importer.TerraformModulePath = viper.GetString("terraformModulePath")
+		importer.SubscriptionID = graphInstance.SubscriptionIDs[0]
+		importer.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
+		importer.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
+		importer.GraphResources, _ = graphInstance.GetResources()
 		importer.Logger = log
 		importer.Import()
 	},
@@ -51,19 +65,14 @@ to quickly create a Cobra application.`,
 func init() {
 	rootCmd.AddCommand(runCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// runCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// runCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
-	runCmd.Flags().StringSliceP("subscriptionIDs", "s", nil, "Subscription IDs to use")
-	runCmd.Flags().StringSliceP("ignoreResourceIDPatterns", "i", nil, "Resource ID patterns to ignore")
-	runCmd.Flags().StringSliceP("ignoreResourceTypePatterns", "r", nil, "Resource type patterns to ignore")
-	runCmd.Flags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
-	runCmd.Flags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
+	runCmd.PersistentFlags().StringSliceP("subscriptionIDs", "s", nil, "Subscription IDs to use")
+	viper.BindPFlag("subscriptionIDs", runCmd.PersistentFlags().Lookup("subscriptionIDs"))
+	runCmd.PersistentFlags().StringSliceP("ignoreResourceIDPatterns", "i", nil, "Resource ID patterns to ignore")
+	viper.BindPFlag("ignoreResourceIDPatterns", runCmd.PersistentFlags().Lookup("ignoreResourceIDPatterns"))
+	runCmd.PersistentFlags().StringSliceP("ignoreResourceTypePatterns", "r", nil, "Resource type patterns to ignore")
+	viper.BindPFlag("ignoreResourceTypePatterns", runCmd.PersistentFlags().Lookup("ignoreResourceTypePatterns"))
+	runCmd.PersistentFlags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
+	viper.BindPFlag("terraformModulePath", runCmd.PersistentFlags().Lookup("terraformModulePath"))
+	runCmd.PersistentFlags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
+	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
 }

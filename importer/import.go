@@ -47,6 +47,26 @@ func (importer *Importer) Import() {
 
 	resources := []Resource{}
 
+	resources = importer.mapResources(plan, resources)
+
+	importer.exportResourcesToJSON(resources, jsonFilePath)
+
+	importer.removeBackendOverrideFile(backendOverrideFilePath)
+}
+
+func (importer *Importer) exportResourcesToJSON(resources []Resource, jsonFilePath string) {
+	jsonResources, err := json.Marshal(resources)
+	if err != nil {
+		importer.Logger.Fatal("Error during Marshal(): ", err)
+	}
+	jsonFilePath = filepath.Join(importer.TerraformModulePath, "resources.json")
+	err = os.WriteFile(jsonFilePath, jsonResources, 0644)
+	if err != nil {
+		importer.Logger.Fatal("Error writing file: ", err)
+	}
+}
+
+func (importer *Importer) mapResources(plan map[string]interface{}, resources []Resource) []Resource {
 	for _, resource := range plan["resource_changes"].([]interface{}) {
 		resourceChange := resource.(map[string]interface{})
 
@@ -80,42 +100,37 @@ func (importer *Importer) Import() {
 		resource.Name = resourceChange["name"].(string)
 		resource.Properties = resourceChange["change"].(map[string]interface{})["after"].(map[string]interface{})
 		resource.PropertiesCalculated = resourceChange["change"].(map[string]interface{})["after_unknown"].(map[string]interface{})
-		if val, ok := resource.Properties["name"]; ok {
-			resource.ResourceName = val.(string)
-			foundResourceID := false
 
-			for _, graphResource := range importer.GraphResources {
-				if strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
-					resource.MappedResourceIDs = append(resource.MappedResourceIDs,  graphResource.ID)
-					foundResourceID = true
-				}
-				if strings.HasSuffix(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
-					resource.MappedResourceIDs = append(resource.MappedResourceIDs,  graphResource.ID)
-					foundResourceID = true
-				}
-			}
-
-			if(!foundResourceID) {
-				importer.Logger.Warnf("No matching resource ID found for %s", resource.ResourceName)
-			}
+		if resource.Type == "azurerm_log_analytics_solution" {
+			solutionName := resource.Properties["solution_name"].(string)
+			workSpaceName := resource.Properties["workspace_name"].(string)
+			resourceName := fmt.Sprintf("%s(%s)", solutionName, workSpaceName)
+			resource.ResourceName = resourceName
 		} else {
-			importer.Logger.Warnf("Resource %s does not have a name property", resource.Address)
+			if val, ok := resource.Properties["name"]; ok {
+				resource.ResourceName = val.(string)
+			} else {
+				importer.Logger.Warnf("Resource %s does not have a name property", resource.Address)
+			}
 		}
+
+		foundResourceID := false
+
+		for _, graphResource := range importer.GraphResources {
+			if strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
+				resource.MappedResourceIDs = append(resource.MappedResourceIDs, graphResource.ID)
+				foundResourceID = true
+			}
+		}
+
+		if !foundResourceID {
+			importer.Logger.Warnf("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
+		}
+
 		resources = append(resources, resource)
 		importer.Logger.Tracef("Adding Resource: %s", resource.Address)
 	}
-
-	jsonResources, err := json.Marshal(resources)
-	if err != nil {
-		importer.Logger.Fatal("Error during Marshal(): ", err)
-	}
-	jsonFilePath = filepath.Join(importer.TerraformModulePath, "resources.json")
-	err = os.WriteFile(jsonFilePath, jsonResources, 0644)
-	if err != nil {
-		importer.Logger.Fatal("Error writing file: ", err)
-	}
-
-	importer.removeBackendOverrideFile(backendOverrideFilePath)
+	return resources
 }
 
 func (importer *Importer) removeBackendOverrideFile(backendOverrideFilePath string) {

@@ -1,0 +1,34 @@
+subscriptionIDs:
+  - "67a16f0f-e2c3-4cc4-a17d-c9e4e2a0e8c1"
+  - "a4225384-b567-4381-9ca4-13f5e2e5ab6c"
+ignoreResourceIDPatterns:
+  - "resourceGroups/Default-ActivityLogAlerts"
+  - "resourceGroups/NetworkWatcherRG"
+ignoreResourceTypePatterns:
+  - "random_uuid.telemetry"
+  - "modtm"
+  - "module.management_groups"
+resourceGraphQueries:
+  - name: "Resource Groups"
+    query: |
+      resourcecontainers
+      | where type == "microsoft.resources/subscriptions/resourcegroups"
+      | project id, name, type, location, subscriptionId, resourceGroup = name
+  - name: "Top Level Resources"
+    query: |
+      resources
+      | project name, id, type, location, subscriptionId, resourceGroup
+  - name: "Virtual Network Subnets"
+    query: |
+      resources
+      | where type == "microsoft.network/virtualnetworks"
+      | project id, name, type, location, subscriptionId, resourceGroup, subnets = properties.subnets
+      | mv-expand subnets
+      | project name = tostring(subnets.name), id = tostring(subnets.id), type = tostring(subnets.type), location, subscriptionId, resourceGroup
+  - name: "Virtual Network Peerings"
+    query: |
+      resources
+      | where type == "microsoft.network/virtualnetworks"
+      | project id, name, type, location, subscriptionId, resourceGroup, peerings = properties.virtualNetworkPeerings
+      | mv-expand peerings
+      | project name = tostring(peerings.name), id = tostring(peerings.id), type = tostring(peerings.type), location, subscriptionId, resourceGroup
