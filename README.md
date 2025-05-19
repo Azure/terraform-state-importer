@@ -60,9 +60,17 @@ In the CSV file, you will find an Action column. Each issue must have an action 
 Follow the steps below to resolve each issue, then:
 
 1. Save the CSV file in CSV format.
-1. Run the tool again, this time using the `--issueCsv` option to specify the path to the CSV file you just saved.
+1. Run the tool again, this time using the `--issuesCsv` option to specify the path to the CSV file you just saved.
 
-The tool will read your CSV file and validate that all issues have resolution actions. If any are missing, you'll be prompted to resolve them before the tool can continue.
+    ```bash
+    ./terraform-state-importer --terraformModulePath <path to your terraform module> --config <path to your config.yaml> --issuesCsv <path to your issues.csv>
+    ```
+
+    The tool will read your CSV file and validate that all issues have resolution actions. If any are missing, you'll be prompted to resolve them before the tool can continue.
+
+1. The tool will then generate a set of import blocks for the resources that can be imported into the module.
+1. The tool will clean up any files it created during the discovery and analysis phase, including the `issues.csv` file.
+1. You can now commit and push your changes to the module repository and run your continuous delivery pipeline to plan and apply the changes.
 
 #### MultipleResourceIDs
 
