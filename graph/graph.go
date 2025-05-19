@@ -27,6 +27,7 @@ type Resource struct {
 	ID string
 	Type string
 	Name string
+	Location string
 }
 
 func (graph *Graph) GetResources() ([]Resource, error) {
@@ -93,6 +94,7 @@ func (graph *Graph) getResources(subscriptionID string, cred *azidentity.Default
 				ID:   resourceID,
 				Type: resource["type"].(string),
 				Name: resource["name"].(string),
+				Location: resource["location"].(string),
 			}
 			resources = append(resources, resourceResult)
 		}

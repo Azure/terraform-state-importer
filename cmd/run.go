@@ -53,8 +53,6 @@ to quickly create a Cobra application.`,
 			})
 		}
 
-
-
 		graphInstance.Logger = log
 
 		importerInstance := importer.Importer{}
@@ -62,7 +60,6 @@ to quickly create a Cobra application.`,
 		importerInstance.SubscriptionID = graphInstance.SubscriptionIDs[0]
 		importerInstance.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
 		importerInstance.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
-		importerInstance.GraphResources, _ = graphInstance.GetResources()
 
 	    nameFormats := viper.Get("nameFormats").([]interface{})
 		for _, rawNameFormat := range nameFormats {
@@ -76,11 +73,13 @@ to quickly create a Cobra application.`,
 			importerInstance.NameFormats = append(importerInstance.NameFormats, importer.NameFormat{
 				Type:  nameFormatMap["type"].(string),
 				NameFormat: nameFormatMap["nameformat"].(string),
+				NameMatchType: importer.NameMatchType(nameFormatMap["namematchtype"].(string)),
 				NameFormatArguments: nameFormatArguments,
 			})
 		}
 
 		importerInstance.Logger = log
+		importerInstance.GraphResources, _ = graphInstance.GetResources()
 		importerInstance.Import()
 	},
 }
