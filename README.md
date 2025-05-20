@@ -59,7 +59,7 @@ In the CSV file, you will find an Action column. Each issue must have an action 
 
 Follow the steps below to resolve each issue, then:
 
-1. Save the CSV file in CSV format.
+1. Save the CSV file in CSV format. We recommend saving this in a separate folder from the original file, so you don't accidentally overwrite the original file.
 1. Run the tool again, this time using the `--issuesCsv` option to specify the path to the CSV file you just saved.
 
     ```bash

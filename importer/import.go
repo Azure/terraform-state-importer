@@ -2,71 +2,79 @@ package importer
 
 import (
 	"crypto/sha256"
-	"encoding/csv"
+
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+
 	"strings"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/azure/terraform-state-importer/graph"
+	"github.com/azure/terraform-state-importer/azure"
 )
 
-type Importer struct{
-	TerraformModulePath string
-	SubscriptionID string
+type Importer struct {
+	TerraformModulePath        string
+	SubscriptionID             string
 	IgnoreResourceTypePatterns []string
-	SkipInitPlanShow bool
-	GraphResources []graph.Resource
-	NameFormats []NameFormat
-	Logger *logrus.Logger
+	SkipInitPlanShow           bool
+	ResourceGraphClient        azure.ResourceGraphClient
+	NameFormats                []NameFormat
+	Logger                     *logrus.Logger
 }
 
 type NameFormat struct {
-	Type string
-	NameFormat string
-	NameMatchType NameMatchType
+	Type                string
+	NameFormat          string
+	NameMatchType       NameMatchType
 	NameFormatArguments []string
 }
 
 type Resource struct {
-	ID string
-	Address string
-	Type    string
-	Name    string
-	Location string
-	ResourceName string
+	ID                    string
+	Address               string
+	Type                  string
+	Name                  string
+	Location              string
+	ResourceName          string
 	ResourceNameMatchType NameMatchType
-	MappedResources []graph.Resource
-	Properties map[string]interface{}
-	PropertiesCalculated map[string]interface{}
+	MappedResources       []azure.Resource
+	Properties            map[string]any
+	PropertiesCalculated  map[string]any
 }
 
-
 type ResourceIssue struct {
-	Resource Resource
+	Resource  Resource
 	IssueType IssueType
 }
 
 type IssueType string
 
 const (
-	IssueTypeNone IssueType = "None"
-	IssueTypeNoResourceID IssueType = "NoResourceID"
+	IssueTypeNone                IssueType = "None"
+	IssueTypeNoResourceID        IssueType = "NoResourceID"
 	IssueTypeMultipleResourceIDs IssueType = "MultipleResourceIDs"
-	IssueTypeUnusedResourceID IssueType = "UnusedResourceID"
+	IssueTypeUnusedResourceID    IssueType = "UnusedResourceID"
 )
 
 type NameMatchType string
 
 const (
-	NameMatchTypeExact NameMatchType = "Exact"
+	NameMatchTypeExact      NameMatchType = "Exact"
 	NameMatchTypeIDContains NameMatchType = "IDContains"
+)
+
+type ActionType string
+
+const (
+	ActionTypeNone    ActionType = ""
+	ActionTypeUse     ActionType = "use"
+	ActionTypeIgnore  ActionType = "ignore"
+	ActionTypeReplace ActionType = "replace"
 )
 
 func (importer *Importer) Import() {
@@ -74,7 +82,7 @@ func (importer *Importer) Import() {
 	chDir := fmt.Sprintf("-chdir=%s", importer.TerraformModulePath)
 	jsonFilePath := filepath.Join(importer.TerraformModulePath, "tfplan.json")
 
-	if! importer.SkipInitPlanShow {
+	if !importer.SkipInitPlanShow {
 		importer.Logger.Info("Running Terraform init, plan and show")
 		importer.executeTerraformInit(chDir)
 		importer.executeTerraformPlan(chDir)
@@ -82,106 +90,38 @@ func (importer *Importer) Import() {
 	}
 	plan := importer.loadJSONFromFile(jsonFilePath)
 
-	resources := importer.readResourcesFromPlan(plan)
-	exportToJSON(resources, "resources.json", importer.TerraformModulePath, importer.Logger)
+	graphResources, err := importer.ResourceGraphClient.GetResources()
+	if err != nil {
+		importer.Logger.Fatalf("Error getting resources from Resource Graph: %v", err)
+	}
+	planResources := importer.readResourcesFromPlan(plan)
+	planResources, issues := importer.mapResourcesFromGraphToPlan(graphResources, planResources)
 
-	issues := importer.mapResourcesFromGraphToPlan(resources)
 	exportToJSON(issues, "issues.json", importer.TerraformModulePath, importer.Logger)
+	exportToJSON(planResources, "resources.json", importer.TerraformModulePath, importer.Logger)
 
 	if len(issues) > 0 {
 		importer.Logger.Warnf("Found %d issues based on the Terraform Plan", len(issues))
-
-		csvData := [][]string{{ "Issue ID", "Issue Type", "Resource Address", "Resource Name", "Resource Type", "Resource Location", "Mapped Resource ID", "Action", "Action ID" }}
-
-		for id, issue := range issues {
-			resourceAddress := issue.Resource.Address
-			resourceName := issue.Resource.ResourceName
-			resourceType := issue.Resource.Type
-			resourceLocation := issue.Resource.Location
-
-			if issue.IssueType == IssueTypeUnusedResourceID {
-				resourceAddress = issue.Resource.MappedResources[0].ID
-				resourceName = issue.Resource.MappedResources[0].Name
-				resourceType = issue.Resource.MappedResources[0].Type
-				resourceLocation = issue.Resource.MappedResources[0].Location
-			}
-
-			if issue.IssueType == IssueTypeMultipleResourceIDs {
-				for _, mappedResource := range issue.Resource.MappedResources {
-					csvData = append(csvData, []string{
-						id,
-						string(issue.IssueType),
-						resourceAddress,
-						resourceName,
-						resourceType,
-						resourceLocation,
-						mappedResource.ID,
-						"",
-						"",
-					})
-				}
-			} else {
-				csvData = append(csvData, []string{
-					id,
-					string(issue.IssueType),
-					resourceAddress,
-					resourceName,
-					resourceType,
-					resourceLocation,
-					"",
-					"",
-					"",
-				})
-			}
-		}
-
-		sort.Slice(csvData, func(i, j int) bool {
-			return csvData[i][1] < csvData[j][1]
-		})
-
-
-		sort.Sort(ByTypeAndAddress(csvData))
-
-		csvFilePath := filepath.Join(importer.TerraformModulePath, "issues.csv")
-		csvFile, err := os.Create(csvFilePath)
-		if err != nil {
-			importer.Logger.Fatalf("Failed to create file: %v", err)
-		}
-		defer csvFile.Close()
-		csvWriter := csv.NewWriter(csvFile)
-		defer csvWriter.Flush()
-		err = csvWriter.WriteAll(csvData)
-		if err != nil {
-			importer.Logger.Fatalf("Failed to write CSV file: %v", err)
-		}
-		importer.Logger.Infof("Issues written to %s", csvFilePath)
+		importer.exportIssuesToCsv(issues)
 	}
 
 	importer.removeBackendOverrideFile(backendOverrideFilePath)
 }
 
-type ByTypeAndAddress [][]string
-func (o ByTypeAndAddress) Len() int  { return len(o) }
-func (o ByTypeAndAddress) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
-func (o ByTypeAndAddress) Less(i, j int) bool {
-	if o[i][1] == o[j][1] {
-		return o[i][2] < o[j][2]
-	}
-	return o[i][1] < o[j][1]
-}
-
-func (importer *Importer) mapResourcesFromGraphToPlan(resources map[string]Resource) map[string]ResourceIssue {
+func (importer *Importer) mapResourcesFromGraphToPlan(graphResources []azure.Resource, planResources map[string]Resource) (map[string]Resource, map[string]ResourceIssue) {
 	issues := map[string]ResourceIssue{}
-	uniqueUsedResources := make(map[string]graph.Resource)
+	uniqueUsedResources := make(map[string]azure.Resource)
 
-	for _, resource := range resources {
-		for _, graphResource := range importer.GraphResources {
-			if(resource.ResourceNameMatchType == NameMatchTypeExact && strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName)) {
+	for resourceKey, resource := range planResources {
+		for _, graphResource := range graphResources {
+			if resource.ResourceNameMatchType == NameMatchTypeExact && strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
+				planResources[resourceKey] = resource
 			}
-			
-			if(resource.ResourceNameMatchType == NameMatchTypeIDContains && strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName))) {
+
+			if resource.ResourceNameMatchType == NameMatchTypeIDContains && strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
+				planResources[resourceKey] = resource
 			}
 		}
 
@@ -198,7 +138,7 @@ func (importer *Importer) mapResourcesFromGraphToPlan(resources map[string]Resou
 		}
 
 		if len(resource.MappedResources) > 1 {
-			mappedResourceIDsBasedOnLocation := []graph.Resource{}
+			mappedResourceIDsBasedOnLocation := []azure.Resource{}
 
 			for _, mappedResource := range resource.MappedResources {
 				if resource.Location == mappedResource.Location {
@@ -221,13 +161,13 @@ func (importer *Importer) mapResourcesFromGraphToPlan(resources map[string]Resou
 		}
 	}
 
-	for _, graphResource := range importer.GraphResources {
+	for _, graphResource := range graphResources {
 		if _, exists := uniqueUsedResources[graphResource.ID]; !exists {
 			importer.Logger.Warnf("Resource ID %s is not used in the Terraform plan", graphResource.ID)
-			addIssue(issues, Resource{ID: getIdentityHash(graphResource.ID), MappedResources: []graph.Resource{ graphResource}}, IssueTypeUnusedResourceID)
+			addIssue(issues, Resource{ID: getIdentityHash(graphResource.ID), MappedResources: []azure.Resource{graphResource}}, IssueTypeUnusedResourceID)
 		}
 	}
-	return issues
+	return planResources, issues
 }
 
 func addIssue(issues map[string]ResourceIssue, resource Resource, issueType IssueType) {
@@ -251,11 +191,11 @@ func exportToJSON[V Resource | ResourceIssue](resources map[string]V, fileName s
 	}
 }
 
-func (importer *Importer) readResourcesFromPlan(plan map[string]interface{}) map[string]Resource {
+func (importer *Importer) readResourcesFromPlan(plan map[string]any) map[string]Resource {
 	resources := map[string]Resource{}
 
-	for _, resource := range plan["resource_changes"].([]interface{}) {
-		resourceChange := resource.(map[string]interface{})
+	for _, resource := range plan["resource_changes"].([]any) {
+		resourceChange := resource.(map[string]any)
 
 		mode := resourceChange["mode"].(string)
 		if mode != "managed" {
@@ -287,8 +227,8 @@ func (importer *Importer) readResourcesFromPlan(plan map[string]interface{}) map
 		resource.Type = resourceChange["type"].(string)
 		resource.Name = resourceChange["name"].(string)
 
-		resource.Properties = resourceChange["change"].(map[string]interface{})["after"].(map[string]interface{})
-		resource.PropertiesCalculated = resourceChange["change"].(map[string]interface{})["after_unknown"].(map[string]interface{})
+		resource.Properties = resourceChange["change"].(map[string]any)["after"].(map[string]any)
+		resource.PropertiesCalculated = resourceChange["change"].(map[string]any)["after_unknown"].(map[string]any)
 
 		foundName := false
 
@@ -322,7 +262,7 @@ func (importer *Importer) readResourcesFromPlan(plan map[string]interface{}) map
 		}
 
 		if val, ok := resource.Properties["location"]; ok {
-			if(val != nil) {
+			if val != nil {
 				resource.Location = val.(string)
 			}
 		}
@@ -340,13 +280,13 @@ func (importer *Importer) removeBackendOverrideFile(backendOverrideFilePath stri
 	}
 }
 
-func (importer *Importer) loadJSONFromFile(jsonFilePath string) (map[string]interface{}) {
+func (importer *Importer) loadJSONFromFile(jsonFilePath string) map[string]any {
 	content, err := os.ReadFile(jsonFilePath)
 	if err != nil {
 		importer.Logger.Fatal("Error when opening file: ", err)
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	err = json.Unmarshal(content, &payload)
 	if err != nil {
 		importer.Logger.Fatal("Error during Unmarshal(): ", err)
@@ -399,7 +339,7 @@ func (importer *Importer) executeTerraformInit(chDir string) {
 	}
 }
 
-func (importer *Importer) createBackendOverrideFile() (string) {
+func (importer *Importer) createBackendOverrideFile() string {
 	backendOverrideFilePath := filepath.Join(importer.TerraformModulePath, "backend_override.tf")
 
 	importer.Logger.Tracef("Creating backend override file: %s", backendOverrideFilePath)

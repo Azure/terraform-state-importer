@@ -6,10 +6,10 @@ package cmd
 import (
 	"github.com/sirupsen/logrus"
 
-	"github.com/azure/terraform-state-importer/graph"
+	"github.com/azure/terraform-state-importer/azure"
 	"github.com/azure/terraform-state-importer/importer"
 	"github.com/spf13/cobra"
- 	"github.com/spf13/viper"
+	"github.com/spf13/viper"
 )
 
 var log = logrus.New()
@@ -40,14 +40,14 @@ to quickly create a Cobra application.`,
 			log.Debugf("Command Flag: %s = %s", key, value)
 		}
 
-		graphInstance := graph.Graph{}
+		graphInstance := azure.ResourceGraphQueryClient{}
 		graphInstance.SubscriptionIDs = viper.GetStringSlice("subscriptionIDs")
 		graphInstance.IgnoreResourceIDPatterns = viper.GetStringSlice("ignoreResourceIDPatterns")
 
-		rawQueries := viper.Get("resourceGraphQueries").([]interface{})
+		rawQueries := viper.Get("resourceGraphQueries").([]any)
 		for _, rawQuery := range rawQueries {
-			queryMap := rawQuery.(map[string]interface{})
-			graphInstance.ResourceGraphQueries = append(graphInstance.ResourceGraphQueries, graph.ResourceGraphQuery{
+			queryMap := rawQuery.(map[string]any)
+			graphInstance.ResourceGraphQueries = append(graphInstance.ResourceGraphQueries, azure.ResourceGraphQuery{
 				Name:  queryMap["name"].(string),
 				Query: queryMap["query"].(string),
 			})
@@ -61,25 +61,25 @@ to quickly create a Cobra application.`,
 		importerInstance.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
 		importerInstance.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
 
-	    nameFormats := viper.Get("nameFormats").([]interface{})
+		nameFormats := viper.Get("nameFormats").([]any)
 		for _, rawNameFormat := range nameFormats {
-			nameFormatMap := rawNameFormat.(map[string]interface{})
+			nameFormatMap := rawNameFormat.(map[string]any)
 			nameFormatArguments := []string{}
 
-			for _, arg := range nameFormatMap["nameformatarguments"].([]interface{}) {
+			for _, arg := range nameFormatMap["nameformatarguments"].([]any) {
 				nameFormatArguments = append(nameFormatArguments, arg.(string))
 			}
 
 			importerInstance.NameFormats = append(importerInstance.NameFormats, importer.NameFormat{
-				Type:  nameFormatMap["type"].(string),
-				NameFormat: nameFormatMap["nameformat"].(string),
-				NameMatchType: importer.NameMatchType(nameFormatMap["namematchtype"].(string)),
+				Type:                nameFormatMap["type"].(string),
+				NameFormat:          nameFormatMap["nameformat"].(string),
+				NameMatchType:       importer.NameMatchType(nameFormatMap["namematchtype"].(string)),
 				NameFormatArguments: nameFormatArguments,
 			})
 		}
 
 		importerInstance.Logger = log
-		importerInstance.GraphResources, _ = graphInstance.GetResources()
+		importerInstance.ResourceGraphClient = graphInstance
 		importerInstance.Import()
 	},
 }
