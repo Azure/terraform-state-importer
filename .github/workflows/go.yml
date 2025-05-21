@@ -34,7 +34,6 @@ jobs:
       with:
         summary: true
         report-path: './ctrf-report.json'
-        pull-request-report: true
         summary-report: true
         failed-report: true
         flaky-report: true
