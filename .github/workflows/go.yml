@@ -6,8 +6,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
-jobs:
+permissions:
+  contents: write
+  pull-requests: write
 
+jobs:
   build:
     runs-on: ubuntu-latest
     steps:
@@ -22,4 +25,15 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v ./...
+      run: |
+        go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
+        go test -v ./... | go-ctrf-json-reporter -output ctrf-report.json
+
+    - name: Publish Test Report
+      uses: ctrf-io/github-test-reporter@v1
+      with:
+        report-path: './ctrf-report.json'
+        pull-request-report: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if: always()
