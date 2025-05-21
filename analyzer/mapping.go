@@ -10,38 +10,46 @@ import (
 
 	"github.com/azure/terraform-state-importer/azure"
 	"github.com/azure/terraform-state-importer/csv"
-	issuetypes "github.com/azure/terraform-state-importer/issues"
+	"github.com/azure/terraform-state-importer/hcl"
 	"github.com/azure/terraform-state-importer/json"
 	"github.com/azure/terraform-state-importer/terraform"
+	"github.com/azure/terraform-state-importer/types"
 )
 
 type MappingClient struct {
 	WorkingFolderPath   string
+	HasInputCsv         bool
 	ResourceGraphClient azure.IResourceGraphClient
 	PlanClient          terraform.IPlanClient
 	IssueCsvClient      csv.IIssueCsvClient
 	JsonClient          json.IJsonClient
+	HclClient           hcl.IHclClient
 	Logger              *logrus.Logger
 }
 
-func NewMappingClient(workingFolderPath string, resourceGraphClient azure.IResourceGraphClient, planClient terraform.IPlanClient, issueCsvClient csv.IIssueCsvClient, jsonClient json.IJsonClient, logger *logrus.Logger) *MappingClient {
+func NewMappingClient(workingFolderPath string, hasInputCsv bool, resourceGraphClient azure.IResourceGraphClient, planClient terraform.IPlanClient, issueCsvClient csv.IIssueCsvClient, jsonClient json.IJsonClient, hclClient hcl.IHclClient, logger *logrus.Logger) *MappingClient {
 	return &MappingClient{
 		WorkingFolderPath:   workingFolderPath,
+		HasInputCsv:         hasInputCsv,
 		ResourceGraphClient: resourceGraphClient,
 		PlanClient:          planClient,
 		IssueCsvClient:      issueCsvClient,
 		JsonClient:          jsonClient,
+		HclClient:           hclClient,
 		Logger:              logger,
 	}
 }
 
 func (mappingClient *MappingClient) Map() {
+	resolvedIssues := mappingClient.getResolvedIssues()
+
 	graphResources, err := mappingClient.ResourceGraphClient.GetResources()
 	if err != nil {
 		mappingClient.Logger.Fatalf("Error getting resources from Resource Graph: %v", err)
 	}
 	planResources := mappingClient.PlanClient.PlanAndGetResources()
-	planResources, issues := mappingClient.mapResourcesFromGraphToPlan(graphResources, planResources)
+
+	finalMappedResources, issues := mappingClient.mapResourcesFromGraphToPlan(graphResources, planResources, resolvedIssues)
 
 	mappingClient.JsonClient.Export(issues, "issues.json")
 	mappingClient.JsonClient.Export(planResources, "resources.json")
@@ -49,29 +57,98 @@ func (mappingClient *MappingClient) Map() {
 	if len(issues) > 0 {
 		mappingClient.Logger.Warnf("Found %d issues based on the Terraform Plan and Resource Graph Queries", len(issues))
 		mappingClient.IssueCsvClient.Export(issues)
+		return
 	} else {
 		mappingClient.Logger.Info("No issues found based on the Terraform Plan and Resource Graph Queries")
+		mappingClient.JsonClient.Export(finalMappedResources, "final.json")
 	}
+
+	importBlocks := []types.ImportBlock{}
+	for _, finalMappedResource := range finalMappedResources {
+		if finalMappedResource.IssueType == types.IssueTypeNone {
+			importBlock := types.ImportBlock{
+				To: finalMappedResource.ResourceAddress,
+				ID: finalMappedResource.ResourceID,
+			}
+			importBlocks = append(importBlocks, importBlock)
+		}
+	}
+
+	mappingClient.HclClient.Export(importBlocks, "import.tf")
+
 }
 
-func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []azure.GraphResource, planResources []terraform.PlanResource) ([]terraform.PlanResource, map[string]issuetypes.Issue) {
-	issues := map[string]issuetypes.Issue{}
-	uniqueUsedResources := make(map[string]azure.GraphResource)
+func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue {
+	if mappingClient.HasInputCsv {
+		mappingClient.Logger.Info("Importing issues from supplied CSV file")
+		resolvedIssues, err := mappingClient.IssueCsvClient.Import()
+		if err != nil {
+			mappingClient.Logger.Fatalf("Error importing issues from CSV: %v", err)
+		}
+		mappingClient.Logger.Infof("Imported %d resolved issues from CSV file", len(*resolvedIssues))
+		return resolvedIssues
+	}
+	return nil
+}
+
+func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []types.GraphResource, planResources []*types.PlanResource, resolvedIssues *map[string]types.Issue) ([]types.MappedResource, map[string]types.Issue) {
+	finalMappedResources := []types.MappedResource{}
+	issues := map[string]types.Issue{}
+	uniqueUsedResources := make(map[string]types.GraphResource)
 
 	for _, resource := range planResources {
+		finalMappedResource := types.MappedResource{
+			Type:            types.MappedResourceTypeTerraform,
+			ResourceAddress: resource.Address,
+		}
+
 		for _, graphResource := range graphResources {
-			if resource.ResourceNameMatchType == terraform.NameMatchTypeExact && strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
+			if resource.ResourceNameMatchType == types.NameMatchTypeExact && strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
 			}
 
-			if resource.ResourceNameMatchType == terraform.NameMatchTypeIDContains && strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
+			if resource.ResourceNameMatchType == types.NameMatchTypeIDContains && strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
 			}
 		}
 
 		if len(resource.MappedResources) == 0 {
-			importer.Logger.Warnf("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
-			addIssue(issues, IssueFromPlanResource(resource), issuetypes.IssueTypeNoResourceID)
+			issue := IssueFromPlanResource(resource)
+
+			resolved := false
+			if importer.HasInputCsv {
+				if resolvedIssue, exists := (*resolvedIssues)[getIdentityHash(resource.Address)]; exists {
+					if resolvedIssue.Resolution.ActionType == types.ActionTypeIgnore {
+						importer.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
+						finalMappedResource.IssueType = types.IssueTypeNoResourceID
+						finalMappedResource.IssueActionType = types.ActionTypeIgnore
+						resolved = true
+					}
+					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace {
+						matchedGraphResourceID := (*resolvedIssues)[resolvedIssue.Resolution.ActionID].ResourceAddress
+						for _, graphResource := range graphResources {
+							if strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(matchedGraphResourceID)) {
+								resource.MappedResources = append(resource.MappedResources, graphResource)
+								finalMappedResource.ResourceID = graphResource.ID
+								finalMappedResource.IssueType = types.IssueTypeNoResourceID
+								finalMappedResource.IssueActionType = types.ActionTypeReplace
+								resolved = true
+								break
+							}
+						}
+					}
+				} else {
+					importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+				}
+
+			}
+
+			if !resolved {
+				importer.Logger.Warnf("No matching resource ID found for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
+				addIssue(issues, issue, types.IssueTypeNoResourceID)
+			} else {
+				finalMappedResources = append(finalMappedResources, finalMappedResource)
+			}
 			continue
 		}
 
@@ -82,7 +159,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []azur
 		}
 
 		if len(resource.MappedResources) > 1 {
-			mappedResourceIDsBasedOnLocation := []azure.GraphResource{}
+			mappedResourceIDsBasedOnLocation := []types.GraphResource{}
 
 			for _, mappedResource := range resource.MappedResources {
 				if resource.Location == mappedResource.Location {
@@ -95,28 +172,85 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []azur
 			if len(mappedResourceIDsBasedOnLocation) == 1 {
 				resource.MappedResources = mappedResourceIDsBasedOnLocation
 			} else {
-				importer.Logger.Warnf("More than 1 Resource ID has been matched for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
-				addIssue(issues, IssueFromPlanResource(resource), issuetypes.IssueTypeMultipleResourceIDs)
+				issue := IssueFromPlanResource(resource)
+				resolved := false
+				if importer.HasInputCsv {
+					if resolvedIssue, exists := (*resolvedIssues)[getIdentityHash(resource.Address)]; exists {
+						for _, mappedResource := range resource.MappedResources {
+							if strings.Contains(strings.ToLower(mappedResource.ID), strings.ToLower(resolvedIssue.MappedResourceIDs[0])) {
+								resource.MappedResources = append(resource.MappedResources, mappedResource)
+								finalMappedResource.ResourceID = mappedResource.ID
+								finalMappedResource.IssueType = types.IssueTypeMultipleResourceIDs
+								finalMappedResource.IssueActionType = types.ActionTypeUse
+								resolved = true
+								break
+							}
+						}
+					} else {
+						importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+					}
+				}
+
+				if !resolved {
+					importer.Logger.Warnf("More than 1 Resource ID has been matched for Name: %s, Type: %s, Address: %s", resource.ResourceName, resource.Type, resource.Address)
+					addIssue(issues, issue, types.IssueTypeMultipleResourceIDs)
+				} else {
+					finalMappedResources = append(finalMappedResources, finalMappedResource)
+				}
 			}
 		}
+		finalMappedResource.ResourceID = resource.MappedResources[0].ID
+		finalMappedResource.IssueType = types.IssueTypeNone
+		finalMappedResource.IssueActionType = types.ActionTypeNone
+		finalMappedResources = append(finalMappedResources, finalMappedResource)
 	}
 
 	for _, graphResource := range graphResources {
 		if _, exists := uniqueUsedResources[graphResource.ID]; !exists {
-			importer.Logger.Warnf("Resource ID %s is not used in the Terraform plan", graphResource.ID)
-			addIssue(issues, IssueFromGraphResource(graphResource), issuetypes.IssueTypeUnusedResourceID)
+			finalMappedResource := types.MappedResource{
+				Type:            types.MappedResourceTypeGraph,
+				ResourceAddress: "",
+				ResourceID:      graphResource.ID,
+				IssueType:       types.IssueTypeUnusedResourceID,
+			}
+
+			issue := IssueFromGraphResource(graphResource)
+			resolved := false
+			if importer.HasInputCsv {
+				if resolvedIssue, exists := (*resolvedIssues)[issue.IssueID]; exists {
+					if resolvedIssue.Resolution.ActionType == types.ActionTypeIgnore {
+						importer.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
+						finalMappedResource.IssueActionType = types.ActionTypeIgnore
+						resolved = true
+					}
+					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace {
+						importer.Logger.Debugf("Ignoring via Replace Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
+						finalMappedResource.IssueActionType = types.ActionTypeReplace
+						resolved = true
+					}
+				} else {
+					importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, graphResource.Name, graphResource.Type, graphResource.ID)
+				}
+			}
+
+			if !resolved {
+				importer.Logger.Warnf("Resource ID %s is not used in the Terraform plan", graphResource.ID)
+				addIssue(issues, IssueFromGraphResource(graphResource), types.IssueTypeUnusedResourceID)
+			} else {
+				finalMappedResources = append(finalMappedResources, finalMappedResource)
+			}
 		}
 	}
-	return planResources, issues
+	return finalMappedResources, issues
 }
 
-func addIssue(issues map[string]issuetypes.Issue, issue issuetypes.Issue, issueType issuetypes.IssueType) {
+func addIssue(issues map[string]types.Issue, issue types.Issue, issueType types.IssueType) {
 	issue.IssueType = issueType
 	issues[issue.IssueID] = issue
 }
 
-func IssueFromGraphResource(graphResource azure.GraphResource) issuetypes.Issue {
-	issue := issuetypes.Issue{}
+func IssueFromGraphResource(graphResource types.GraphResource) types.Issue {
+	issue := types.Issue{}
 	issue.IssueID = getIdentityHash(graphResource.ID)
 	issue.ResourceAddress = graphResource.ID
 	issue.ResourceName = graphResource.Name
@@ -127,8 +261,8 @@ func IssueFromGraphResource(graphResource azure.GraphResource) issuetypes.Issue 
 	return issue
 }
 
-func IssueFromPlanResource(planResource terraform.PlanResource) issuetypes.Issue {
-	issue := issuetypes.Issue{}
+func IssueFromPlanResource(planResource *types.PlanResource) types.Issue {
+	issue := types.Issue{}
 	issue.IssueID = getIdentityHash(planResource.Address)
 	issue.ResourceAddress = planResource.Address
 	issue.ResourceName = planResource.ResourceName

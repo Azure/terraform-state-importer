@@ -9,12 +9,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/azure/terraform-state-importer/azure"
 	"github.com/azure/terraform-state-importer/json"
+	"github.com/azure/terraform-state-importer/types"
 )
 
 type IPlanClient interface {
-	PlanAndGetResources() []PlanResource
+	PlanAndGetResources() []*types.PlanResource
 }
 
 type PlanClient struct {
@@ -44,30 +44,11 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 type NameFormat struct {
 	Type                string
 	NameFormat          string
-	NameMatchType       NameMatchType
+	NameMatchType       types.NameMatchType
 	NameFormatArguments []string
 }
 
-type PlanResource struct {
-	Address               string
-	Type                  string
-	Name                  string
-	Location              string
-	ResourceName          string
-	ResourceNameMatchType NameMatchType
-	MappedResources       []azure.GraphResource
-	Properties            map[string]any
-	PropertiesCalculated  map[string]any
-}
-
-type NameMatchType string
-
-const (
-	NameMatchTypeExact      NameMatchType = "Exact"
-	NameMatchTypeIDContains NameMatchType = "IDContains"
-)
-
-func (planClient *PlanClient) PlanAndGetResources() []PlanResource {
+func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
 	jsonFileName := "tfplan.json"
 
 	if !planClient.SkipInitPlanShow {
@@ -86,8 +67,8 @@ func (planClient *PlanClient) PlanAndGetResources() []PlanResource {
 	return planClient.readResourcesFromPlan(plan)
 }
 
-func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []PlanResource {
-	resources := []PlanResource{}
+func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*types.PlanResource {
+	resources := []*types.PlanResource{}
 
 	for _, resource := range plan["resource_changes"].([]any) {
 		resourceChange := resource.(map[string]any)
@@ -98,7 +79,7 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []PlanR
 			continue
 		}
 
-		resource := PlanResource{}
+		resource := types.PlanResource{}
 		resource.Address = resourceChange["address"].(string)
 
 		shouldIgnore := false
@@ -146,7 +127,7 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []PlanR
 		if !foundName {
 			if val, ok := resource.Properties["name"]; ok {
 				resource.ResourceName = val.(string)
-				resource.ResourceNameMatchType = NameMatchTypeExact
+				resource.ResourceNameMatchType = types.NameMatchTypeExact
 				foundName = true
 			}
 		}
@@ -161,7 +142,7 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []PlanR
 			}
 		}
 
-		resources = append(resources, resource)
+		resources = append(resources, &resource)
 		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
 	}
 	return resources

@@ -4,6 +4,8 @@ import (
 	"context"
 	"regexp"
 
+	"github.com/azure/terraform-state-importer/types"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -12,17 +14,17 @@ import (
 )
 
 type IResourceGraphClient interface {
-	GetResources() ([]GraphResource, error)
+	GetResources() ([]types.GraphResource, error)
 }
 
 type ResourceGraphClient struct {
 	SubscriptionIDs          []string
 	IgnoreResourceIDPatterns []string
-	ResourceGraphQueries     []ResourceGraphQuery
+	ResourceGraphQueries     []types.ResourceGraphQuery
 	Logger                   *logrus.Logger
 }
 
-func NewResourceGraphClient(subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
+func NewResourceGraphClient(subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []types.ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
 	return &ResourceGraphClient{
 		SubscriptionIDs:          subscriptionIDs,
 		IgnoreResourceIDPatterns: ignoreResourceIDPatterns,
@@ -31,25 +33,13 @@ func NewResourceGraphClient(subscriptionIDs []string, ignoreResourceIDPatterns [
 	}
 }
 
-type ResourceGraphQuery struct {
-	Name  string
-	Query string
-}
-
-type GraphResource struct {
-	ID       string
-	Type     string
-	Name     string
-	Location string
-}
-
-func (graph ResourceGraphClient) GetResources() ([]GraphResource, error) {
+func (graph *ResourceGraphClient) GetResources() ([]types.GraphResource, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		graph.Logger.Fatal(err)
 	}
 
-	resources := []GraphResource{}
+	resources := []types.GraphResource{}
 
 	for _, subscriptionID := range graph.SubscriptionIDs {
 		graph.Logger.Infof("Checking Subscription ID: %s", subscriptionID)
@@ -59,7 +49,7 @@ func (graph ResourceGraphClient) GetResources() ([]GraphResource, error) {
 	return resources, nil
 }
 
-func (graph ResourceGraphClient) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []GraphResource) []GraphResource {
+func (graph *ResourceGraphClient) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []types.GraphResource) []types.GraphResource {
 	for _, query := range graph.ResourceGraphQueries {
 		graph.Logger.Infof("Running Resource Graph Query: %s", query.Name)
 		graph.Logger.Tracef("Query: %s", query.Query)
@@ -102,7 +92,7 @@ func (graph ResourceGraphClient) getResources(subscriptionID string, cred *azide
 				continue
 			}
 			graph.Logger.Tracef("Adding Resource ID: %s", resourceID)
-			resourceResult := GraphResource{
+			resourceResult := types.GraphResource{
 				ID:       resourceID,
 				Type:     resource["type"].(string),
 				Name:     resource["name"].(string),

@@ -11,8 +11,10 @@ import (
 	"github.com/azure/terraform-state-importer/analyzer"
 	"github.com/azure/terraform-state-importer/azure"
 	"github.com/azure/terraform-state-importer/csv"
+	"github.com/azure/terraform-state-importer/hcl"
 	"github.com/azure/terraform-state-importer/json"
 	"github.com/azure/terraform-state-importer/terraform"
+	"github.com/azure/terraform-state-importer/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -45,11 +47,11 @@ to quickly create a Cobra application.`,
 			log.Debugf("Command Flag: %s = %s", key, value)
 		}
 
-		resourceGraphQueries := []azure.ResourceGraphQuery{}
+		resourceGraphQueries := []types.ResourceGraphQuery{}
 		resourceGraphQueriesRaw := viper.Get("resourceGraphQueries").([]any)
 		for _, rawQuery := range resourceGraphQueriesRaw {
 			queryMap := rawQuery.(map[string]any)
-			resourceGraphQueries = append(resourceGraphQueries, azure.ResourceGraphQuery{
+			resourceGraphQueries = append(resourceGraphQueries, types.ResourceGraphQuery{
 				Name:  queryMap["name"].(string),
 				Query: queryMap["query"].(string),
 			})
@@ -68,7 +70,7 @@ to quickly create a Cobra application.`,
 			nameFormats = append(nameFormats, terraform.NameFormat{
 				Type:                nameFormatMap["type"].(string),
 				NameFormat:          nameFormatMap["nameformat"].(string),
-				NameMatchType:       terraform.NameMatchType(nameFormatMap["namematchtype"].(string)),
+				NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
 				NameFormatArguments: nameFormatArguments,
 			})
 		}
@@ -103,15 +105,23 @@ to quickly create a Cobra application.`,
 
 		issueCsvClient := csv.NewIssueCsvClient(
 			workingFolderPath,
+			viper.GetString("issuesCsv"),
+			log,
+		)
+
+		hclClient := hcl.NewHclClient(
+			viper.GetString("terraformModulePath"),
 			log,
 		)
 
 		mappingClient := analyzer.NewMappingClient(
 			workingFolderPath,
+			viper.GetString("issuesCsv") != "",
 			resourceGraphClient,
 			planClient,
 			issueCsvClient,
 			jsonClient,
+			hclClient,
 			log,
 		)
 
@@ -132,6 +142,8 @@ func init() {
 	viper.BindPFlag("terraformModulePath", runCmd.PersistentFlags().Lookup("terraformModulePath"))
 	runCmd.PersistentFlags().StringP("workingFolderPath", "w", ".", "Working folder path to use")
 	viper.BindPFlag("workingFolderPath", runCmd.PersistentFlags().Lookup("workingFolderPath"))
+	runCmd.PersistentFlags().StringP("issuesCsv", "c", "", "CSV File path to use")
+	viper.BindPFlag("issuesCsv", runCmd.PersistentFlags().Lookup("issuesCsv"))
 	runCmd.PersistentFlags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
 }
