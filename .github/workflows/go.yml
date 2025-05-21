@@ -34,6 +34,7 @@ jobs:
       with:
         report-path: './ctrf-report.json'
         pull-request-report: true
+        summary-report: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       if: always()
