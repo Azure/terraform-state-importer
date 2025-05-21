@@ -32,9 +32,14 @@ jobs:
     - name: Publish Test Report
       uses: ctrf-io/github-test-reporter@v1
       with:
+        summary: true
         report-path: './ctrf-report.json'
         pull-request-report: true
         summary-report: true
+        failed-report: true
+        flaky-report: true
+        skipped-report: true
+        test-report: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       if: always()
