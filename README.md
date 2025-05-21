@@ -2,25 +2,46 @@
 
 This is a tool for running basic analysis and creating import blocks for migrating large Azure workloads to a new module in Terraform.
 
-## Usage
+## Overview
 
 The tools requires two main inputs:
 
 - A set of subscription IDs where your deployed resources reside
 - A Terraform module with variables supplied, which is the module you want to import the resources into
 
-There are three main phases to the tool:
+There are two main phases to using the tool:
 
-1. **Discovery** and **Analysis**: The tool will query Azure for all resources in the specified subscriptions. The tool run a Terraform plan against the module you provided, and will analyze the plan to determine which resources can be mapped to existing Azure resource IDs.
-1. **Issue Resolution**: For any resources that cannnot be mapped, the tools will provide a list of issues. You can then rewiew the issues and decide how to resolve them.
-1. **Import Generation**: The tool will generate a set of import blocks for the resources that can be imported into the module. You can then run these in your Terraform pipeline to import the resources into the module.
+1. **Resource ID Mapping**: We need to map Azure resource IDs to the resources in the module.
+1. **Resource Attribute Mapping**: We need to map the attributes of the Azure resources to the variables in the module.
 
-### Discovery and Analysis
+The tool will help you with the first phase an we then provide guidance for the second phase.
 
-The following steps are required to run the discovery and analysis phase of the tool:
+## Usage
+
+### Setup
+
+The following steps are required to start running the tool:
+
+1. Create a new folder in your local machine to store the tool and the configuration files.
+
+    ```powershell
+    mkdir ~/terraform-state-importer
+    cd ~/terraform-state-importer
+    ```
 
 1. Download the latest tool binary from the [releases page](TBC)
-1. Create a file called `config.yaml` and copy the content from the `config.yaml` in the repository.
+
+    ```powershell
+    Invoke-WebRequest -Uri "<URL to the latest release>" -OutFile terraform-state-importer.zip
+    Expand-Archive terraform-state-importer.zip -DestinationPath ~/terraform-state-importer
+    ```
+
+1. Create a file called `config.yaml` and copy the content from the [config.yaml](TBC) in the repository.
+
+    ```powershell
+    Invoke-WebRequest -Uri "<URL to the config.yaml>" -OutFile config.yaml
+    ```
+
 1. Identify the subscriptions IDs where your deployed resources reside. You can find these in the Azure portal by going to Subscriptions and copying the Subscription ID.
 
     Add the subscription IDs to your YAML `config.yaml` file under the `subscriptionIds` key.
@@ -31,14 +52,18 @@ The following steps are required to run the discovery and analysis phase of the 
       - "00000000-0000-0000-0000-000000000002"
     ```
 
-1. Create the folder with your destination module. This is the module you want to import the resources into. The tool will run a Terraform plan against this module and analyze the plan to determine which resources can be mapped to existing Azure resource IDs.
+1. Create a folder with your destination module. This is the module you want to import the resources into. The tool will run a Terraform plan against this module and analyze the plan to determine which resources can be mapped to existing Azure resource IDs.
 
     In most cases, this will be a pre-existing repository that you just need to clone to your local machine.
 
+    ```powershell
+    git clone <URL to your module repository> ~/terraform-module
+    ```
+
 1. Now you can run the tool. The tool will query Azure for all resources in the specified subscriptions and run a Terraform plan against the module you provided.
 
-    ```bash
-    ./terraform-state-importer --terraformModulePath <path to your terraform module> --config <path to your config.yaml>
+    ```powershell
+    ./terraform-state-importer --terraformModulePath ~/terraform-module --config ./config.yaml
     ```
 
 1. The tool will run and output an `issues.csv` file into the folder where your terraform module resides. This file is required for the next phase of the tool.
@@ -59,19 +84,6 @@ In the CSV file, you will find an Action column. Each issue must have an action 
 
 Follow the steps below to resolve each issue, then:
 
-1. Save the CSV file in CSV format. We recommend saving this in a separate folder from the original file, so you don't accidentally overwrite the original file.
-1. Run the tool again, this time using the `--issuesCsv` option to specify the path to the CSV file you just saved.
-
-    ```bash
-    ./terraform-state-importer --terraformModulePath <path to your terraform module> --config <path to your config.yaml> --issuesCsv <path to your issues.csv>
-    ```
-
-    The tool will read your CSV file and validate that all issues have resolution actions. If any are missing, you'll be prompted to resolve them before the tool can continue.
-
-1. The tool will then generate a set of import blocks for the resources that can be imported into the module.
-1. The tool will clean up any files it created during the discovery and analysis phase, including the `issues.csv` file.
-1. You can now commit and push your changes to the module repository and run your continuous delivery pipeline to plan and apply the changes.
-
 #### MultipleResourceIDs
 
 This issue means that the tool found multiple resource IDs that could be mapped to the same resource in the module. You will need to decide which resource ID to use.
@@ -85,7 +97,13 @@ This issue means that the tool found multiple resource IDs that could be mapped 
 
 This issue means that the tool could not find a resource ID that could be mapped to the resource in the module. You will need to decide how to resolve this issue.
 
-There are two possible actions you can take:
+There are three possible actions you can take:
+
+##### Update your Terraform module
+
+This is the most common solution to this issue. You will need to update you module input variables to ensure that the resource ID matches your existing resource ID in Azure.
+
+In this case, you don't need to make any changes to the CSV file, just leave the `Action` column emty. The tool will recheck it on the next run and remove it from the issues list.
 
 ##### Ignore
 
@@ -102,9 +120,48 @@ This means that you want to destroy the existing resource in Azure and recreate 
 
 #### UnusedResourceID
 
+In most cases you will resolve this issue by following the steps for the `NoResourceID` issue, since there is usually a 1 to 1 mapping between the two issues.
+
 This issue means that the tool found an Azure Resource ID that it could not map to any resource declaration in the module. You will need to decide how to resolve this issue.
 
-In most cases you will resolve this issue by following the steps for the `NoResourceID` Destroy and Recreate (Replace). However, there may be some resource IDs that you want to ignore and not import into the module.
+##### Update your Terraform module
+
+This is the most common solution to this issue. You will need to update you module input variables to ensure that the resource ID matches your existing resource ID in Azure.
+
+In this case, you don't need to make any changes to the CSV file, just leave the `Action` column emty. The tool will recheck it on the next run and remove it from the issues list.
+
+##### Ignore
+
+There may be some resource IDs that you want to ignore and not import into the module.
 
 1. Set the `Action` to `Ignore` for this issue.
 
+### Generate Import Blocks
+
+Once you think you have resolved all the issues in the CSV file, you need to run the tool again.
+
+1. Save the CSV file in CSV format as a different file name.
+1. Run the tool again, this time using the `--issuesCsv` option to specify the path to the CSV file you just saved.
+
+    ```powershell
+    ./terraform-state-importer ~/terraform-module --config ./config.yaml --issuesCsv <path to your issues.csv>
+    ```
+
+    The tool will read your CSV file and validate that all issues have resolution actions. If any are missing, you'll be prompted to resolve them before the tool can continue.
+
+1. Head back to the [Issue Resolution](#issue-resolution) section and follow the steps to resolve any issues that are still present in the CSV file.
+
+1. Once all the issues have been reolved or actioned, the tool will generate a set of import blocks for the resources that can be imported into the module.
+1. You can now commit and push your changes to the module repository and run your continuous delivery pipeline to plan the changes.
+
+### Attribute Mapping
+
+When you run your Terraform plan, you will likely see that some resources will be updated in place. This is because the attributes in your module do not match the attributes of the existing resources in Azure.
+
+You will need to examine the plan and decide which attributes you want to update.
+
+1. Run a Terraform plan against your module and examine the output.
+1. For each resource that is being updated, you will need to decide if you want to update the attribute in the module or leave it as is.
+1. If you want to update the attribute in the module, you will need to update the module input variable to match the existing resource in Azure.
+1. Once you have updated them all, run another Terraform plan and check the output.
+1. If you are happy with the plan, you can now run a Terraform apply to import the resources into the module and deploy any new resources in your module.
