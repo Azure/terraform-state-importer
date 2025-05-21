@@ -4,10 +4,15 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"path/filepath"
+
 	"github.com/sirupsen/logrus"
 
+	"github.com/azure/terraform-state-importer/analyzer"
 	"github.com/azure/terraform-state-importer/azure"
-	"github.com/azure/terraform-state-importer/importer"
+	"github.com/azure/terraform-state-importer/csv"
+	"github.com/azure/terraform-state-importer/json"
+	"github.com/azure/terraform-state-importer/terraform"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -40,29 +45,19 @@ to quickly create a Cobra application.`,
 			log.Debugf("Command Flag: %s = %s", key, value)
 		}
 
-		graphInstance := azure.ResourceGraphQueryClient{}
-		graphInstance.SubscriptionIDs = viper.GetStringSlice("subscriptionIDs")
-		graphInstance.IgnoreResourceIDPatterns = viper.GetStringSlice("ignoreResourceIDPatterns")
-
-		rawQueries := viper.Get("resourceGraphQueries").([]any)
-		for _, rawQuery := range rawQueries {
+		resourceGraphQueries := []azure.ResourceGraphQuery{}
+		resourceGraphQueriesRaw := viper.Get("resourceGraphQueries").([]any)
+		for _, rawQuery := range resourceGraphQueriesRaw {
 			queryMap := rawQuery.(map[string]any)
-			graphInstance.ResourceGraphQueries = append(graphInstance.ResourceGraphQueries, azure.ResourceGraphQuery{
+			resourceGraphQueries = append(resourceGraphQueries, azure.ResourceGraphQuery{
 				Name:  queryMap["name"].(string),
 				Query: queryMap["query"].(string),
 			})
 		}
 
-		graphInstance.Logger = log
-
-		importerInstance := importer.Importer{}
-		importerInstance.TerraformModulePath = viper.GetString("terraformModulePath")
-		importerInstance.SubscriptionID = graphInstance.SubscriptionIDs[0]
-		importerInstance.IgnoreResourceTypePatterns = viper.GetStringSlice("ignoreResourceTypePatterns")
-		importerInstance.SkipInitPlanShow = viper.GetBool("skipInitPlanShow")
-
-		nameFormats := viper.Get("nameFormats").([]any)
-		for _, rawNameFormat := range nameFormats {
+		nameFormats := []terraform.NameFormat{}
+		nameFormatsRaw := viper.Get("nameFormats").([]any)
+		for _, rawNameFormat := range nameFormatsRaw {
 			nameFormatMap := rawNameFormat.(map[string]any)
 			nameFormatArguments := []string{}
 
@@ -70,17 +65,57 @@ to quickly create a Cobra application.`,
 				nameFormatArguments = append(nameFormatArguments, arg.(string))
 			}
 
-			importerInstance.NameFormats = append(importerInstance.NameFormats, importer.NameFormat{
+			nameFormats = append(nameFormats, terraform.NameFormat{
 				Type:                nameFormatMap["type"].(string),
 				NameFormat:          nameFormatMap["nameformat"].(string),
-				NameMatchType:       importer.NameMatchType(nameFormatMap["namematchtype"].(string)),
+				NameMatchType:       terraform.NameMatchType(nameFormatMap["namematchtype"].(string)),
 				NameFormatArguments: nameFormatArguments,
 			})
 		}
 
-		importerInstance.Logger = log
-		importerInstance.ResourceGraphClient = graphInstance
-		importerInstance.Import()
+		workingFolderPath, err := filepath.Abs(viper.GetString("workingFolderPath"))
+		if err != nil {
+			log.Fatalf("Error getting working folder path: %v", err)
+		}
+
+		resourceGraphClient := azure.NewResourceGraphClient(
+			viper.GetStringSlice("subscriptionIDs"),
+			viper.GetStringSlice("ignoreResourceIDPatterns"),
+			resourceGraphQueries,
+			log,
+		)
+
+		jsonClient := json.NewJsonClient(
+			workingFolderPath,
+			log,
+		)
+
+		planClient := terraform.NewPlanClient(
+			viper.GetString("terraformModulePath"),
+			workingFolderPath,
+			resourceGraphClient.SubscriptionIDs[0],
+			viper.GetStringSlice("ignoreResourceTypePatterns"),
+			viper.GetBool("skipInitPlanShow"),
+			nameFormats,
+			jsonClient,
+			log,
+		)
+
+		issueCsvClient := csv.NewIssueCsvClient(
+			workingFolderPath,
+			log,
+		)
+
+		mappingClient := analyzer.NewMappingClient(
+			workingFolderPath,
+			resourceGraphClient,
+			planClient,
+			issueCsvClient,
+			jsonClient,
+			log,
+		)
+
+		mappingClient.Map()
 	},
 }
 
@@ -95,6 +130,8 @@ func init() {
 	viper.BindPFlag("ignoreResourceTypePatterns", runCmd.PersistentFlags().Lookup("ignoreResourceTypePatterns"))
 	runCmd.PersistentFlags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
 	viper.BindPFlag("terraformModulePath", runCmd.PersistentFlags().Lookup("terraformModulePath"))
+	runCmd.PersistentFlags().StringP("workingFolderPath", "w", ".", "Working folder path to use")
+	viper.BindPFlag("workingFolderPath", runCmd.PersistentFlags().Lookup("workingFolderPath"))
 	runCmd.PersistentFlags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
 }

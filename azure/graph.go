@@ -11,15 +11,24 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
 
-type ResourceGraphClient interface {
-	GetResources() ([]Resource, error)
+type IResourceGraphClient interface {
+	GetResources() ([]GraphResource, error)
 }
 
-type ResourceGraphQueryClient struct {
+type ResourceGraphClient struct {
 	SubscriptionIDs          []string
 	IgnoreResourceIDPatterns []string
 	ResourceGraphQueries     []ResourceGraphQuery
 	Logger                   *logrus.Logger
+}
+
+func NewResourceGraphClient(subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
+	return &ResourceGraphClient{
+		SubscriptionIDs:          subscriptionIDs,
+		IgnoreResourceIDPatterns: ignoreResourceIDPatterns,
+		ResourceGraphQueries:     resourceGraphQueries,
+		Logger:                   logger,
+	}
 }
 
 type ResourceGraphQuery struct {
@@ -27,20 +36,20 @@ type ResourceGraphQuery struct {
 	Query string
 }
 
-type Resource struct {
+type GraphResource struct {
 	ID       string
 	Type     string
 	Name     string
 	Location string
 }
 
-func (graph ResourceGraphQueryClient) GetResources() ([]Resource, error) {
+func (graph ResourceGraphClient) GetResources() ([]GraphResource, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		graph.Logger.Fatal(err)
 	}
 
-	resources := []Resource{}
+	resources := []GraphResource{}
 
 	for _, subscriptionID := range graph.SubscriptionIDs {
 		graph.Logger.Infof("Checking Subscription ID: %s", subscriptionID)
@@ -50,7 +59,7 @@ func (graph ResourceGraphQueryClient) GetResources() ([]Resource, error) {
 	return resources, nil
 }
 
-func (graph ResourceGraphQueryClient) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []Resource) []Resource {
+func (graph ResourceGraphClient) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []GraphResource) []GraphResource {
 	for _, query := range graph.ResourceGraphQueries {
 		graph.Logger.Infof("Running Resource Graph Query: %s", query.Name)
 		graph.Logger.Tracef("Query: %s", query.Query)
@@ -93,7 +102,7 @@ func (graph ResourceGraphQueryClient) getResources(subscriptionID string, cred *
 				continue
 			}
 			graph.Logger.Tracef("Adding Resource ID: %s", resourceID)
-			resourceResult := Resource{
+			resourceResult := GraphResource{
 				ID:       resourceID,
 				Type:     resource["type"].(string),
 				Name:     resource["name"].(string),
