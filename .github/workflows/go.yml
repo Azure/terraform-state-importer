@@ -27,7 +27,7 @@ jobs:
     - name: Test
       run: |
         go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
-        go test -v ./... | go-ctrf-json-reporter -output ctrf-report.json
+        go test -json ./... | go-ctrf-json-reporter -output ctrf-report.json
 
     - name: Publish Test Report
       uses: ctrf-io/github-test-reporter@v1
