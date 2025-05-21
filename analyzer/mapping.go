@@ -65,7 +65,7 @@ func (mappingClient *MappingClient) Map() {
 
 	importBlocks := []types.ImportBlock{}
 	for _, finalMappedResource := range finalMappedResources {
-		if finalMappedResource.IssueType == types.IssueTypeNone {
+		if finalMappedResource.ActionType == types.ActionTypeUse {
 			importBlock := types.ImportBlock{
 				To: finalMappedResource.ResourceAddress,
 				ID: finalMappedResource.ResourceID,
@@ -74,7 +74,7 @@ func (mappingClient *MappingClient) Map() {
 		}
 	}
 
-	mappingClient.HclClient.Export(importBlocks, "import.tf")
+	mappingClient.HclClient.Export(importBlocks, "imports.tf")
 
 }
 
@@ -112,7 +112,10 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 			}
 		}
 
+		hadIssue := false
+
 		if len(resource.MappedResources) == 0 {
+			hadIssue = true
 			issue := IssueFromPlanResource(resource)
 
 			resolved := false
@@ -121,17 +124,17 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 					if resolvedIssue.Resolution.ActionType == types.ActionTypeIgnore {
 						importer.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
 						finalMappedResource.IssueType = types.IssueTypeNoResourceID
-						finalMappedResource.IssueActionType = types.ActionTypeIgnore
+						finalMappedResource.ActionType = types.ActionTypeIgnore
 						resolved = true
 					}
 					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace {
 						matchedGraphResourceID := (*resolvedIssues)[resolvedIssue.Resolution.ActionID].ResourceAddress
 						for _, graphResource := range graphResources {
 							if strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(matchedGraphResourceID)) {
-								resource.MappedResources = append(resource.MappedResources, graphResource)
+								resource.MappedResources = []types.GraphResource{graphResource}
 								finalMappedResource.ResourceID = graphResource.ID
 								finalMappedResource.IssueType = types.IssueTypeNoResourceID
-								finalMappedResource.IssueActionType = types.ActionTypeReplace
+								finalMappedResource.ActionType = types.ActionTypeReplace
 								resolved = true
 								break
 							}
@@ -172,16 +175,17 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 			if len(mappedResourceIDsBasedOnLocation) == 1 {
 				resource.MappedResources = mappedResourceIDsBasedOnLocation
 			} else {
+				hadIssue = true
 				issue := IssueFromPlanResource(resource)
 				resolved := false
 				if importer.HasInputCsv {
 					if resolvedIssue, exists := (*resolvedIssues)[getIdentityHash(resource.Address)]; exists {
 						for _, mappedResource := range resource.MappedResources {
 							if strings.Contains(strings.ToLower(mappedResource.ID), strings.ToLower(resolvedIssue.MappedResourceIDs[0])) {
-								resource.MappedResources = append(resource.MappedResources, mappedResource)
+								resource.MappedResources = []types.GraphResource{mappedResource}
 								finalMappedResource.ResourceID = mappedResource.ID
 								finalMappedResource.IssueType = types.IssueTypeMultipleResourceIDs
-								finalMappedResource.IssueActionType = types.ActionTypeUse
+								finalMappedResource.ActionType = types.ActionTypeUse
 								resolved = true
 								break
 							}
@@ -199,10 +203,12 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 				}
 			}
 		}
-		finalMappedResource.ResourceID = resource.MappedResources[0].ID
-		finalMappedResource.IssueType = types.IssueTypeNone
-		finalMappedResource.IssueActionType = types.ActionTypeNone
-		finalMappedResources = append(finalMappedResources, finalMappedResource)
+		if !hadIssue {
+			finalMappedResource.ResourceID = resource.MappedResources[0].ID
+			finalMappedResource.IssueType = types.IssueTypeNone
+			finalMappedResource.ActionType = types.ActionTypeUse
+			finalMappedResources = append(finalMappedResources, finalMappedResource)
+		}
 	}
 
 	for _, graphResource := range graphResources {
@@ -220,12 +226,12 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 				if resolvedIssue, exists := (*resolvedIssues)[issue.IssueID]; exists {
 					if resolvedIssue.Resolution.ActionType == types.ActionTypeIgnore {
 						importer.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
-						finalMappedResource.IssueActionType = types.ActionTypeIgnore
+						finalMappedResource.ActionType = types.ActionTypeIgnore
 						resolved = true
 					}
 					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace {
 						importer.Logger.Debugf("Ignoring via Replace Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
-						finalMappedResource.IssueActionType = types.ActionTypeReplace
+						finalMappedResource.ActionType = types.ActionTypeReplace
 						resolved = true
 					}
 				} else {

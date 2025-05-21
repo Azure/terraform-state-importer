@@ -5,7 +5,7 @@ type MappedResource struct {
 	ResourceAddress string
 	ResourceID      string
 	IssueType       IssueType
-	IssueActionType ActionType
+	ActionType      ActionType
 }
 
 type MappedResourceType string
