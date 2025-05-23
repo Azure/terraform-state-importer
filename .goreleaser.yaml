@@ -1,4 +1,6 @@
 version: 2
 
 archives:
-  - format: ['zip', 'tar.gz']
+  - formats:
+    - zip
+    - tar.gz
