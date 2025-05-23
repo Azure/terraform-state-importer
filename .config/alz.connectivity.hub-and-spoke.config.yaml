@@ -1,4 +1,4 @@
-# USe the setting to specify the Azure Subscription IDs to target for the migration
+# Use this setting to specify the Azure Subscription IDs to target for the migration
 subscriptionIDs:
   # Connectivity Subscriptiopn ID
   - "00000000-0000-0000-0000-000000000000"
