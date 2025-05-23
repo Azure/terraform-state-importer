@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/azure/terraform-state-importer/filepathparser"
 	"github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
@@ -75,6 +76,10 @@ func init() {
 func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.
+		cfgFile, err := filepathparser.ParsePath(cfgFile)
+		if err != nil {
+			log.Fatalf("Error parsing config file path: %v", err)
+		}
 		viper.SetConfigFile(cfgFile)
 	} else {
 		// Find home directory.

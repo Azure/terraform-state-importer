@@ -4,13 +4,12 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"path/filepath"
-
 	"github.com/sirupsen/logrus"
 
 	"github.com/azure/terraform-state-importer/analyzer"
 	"github.com/azure/terraform-state-importer/azure"
 	"github.com/azure/terraform-state-importer/csv"
+	"github.com/azure/terraform-state-importer/filepathparser"
 	"github.com/azure/terraform-state-importer/hcl"
 	"github.com/azure/terraform-state-importer/json"
 	"github.com/azure/terraform-state-importer/terraform"
@@ -75,9 +74,13 @@ to quickly create a Cobra application.`,
 			})
 		}
 
-		workingFolderPath, err := filepath.Abs(viper.GetString("workingFolderPath"))
+		workingFolderPath, err := filepathparser.ParsePath(viper.GetString("workingFolderPath"))
 		if err != nil {
 			log.Fatalf("Error getting working folder path: %v", err)
+		}
+		terraformModulePath, err := filepathparser.ParsePath(viper.GetString("terraformModulePath"))
+		if err != nil {
+			log.Fatalf("Error getting terraform module path: %v", err)
 		}
 
 		resourceGraphClient := azure.NewResourceGraphClient(
@@ -93,7 +96,7 @@ to quickly create a Cobra application.`,
 		)
 
 		planClient := terraform.NewPlanClient(
-			viper.GetString("terraformModulePath"),
+			terraformModulePath,
 			workingFolderPath,
 			resourceGraphClient.SubscriptionIDs[0],
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
@@ -110,7 +113,7 @@ to quickly create a Cobra application.`,
 		)
 
 		hclClient := hcl.NewHclClient(
-			viper.GetString("terraformModulePath"),
+			terraformModulePath,
 			log,
 		)
 
