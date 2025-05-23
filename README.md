@@ -101,7 +101,7 @@ There are three possible actions you can take:
 
 ##### Update your Terraform module
 
-This is the most common solution to this issue. You will need to update you module input variables to ensure that the resource ID matches your existing resource ID in Azure.
+This is the most common solution to this issue. You will need to update your module input variables to ensure that the resource ID matches your existing resource ID in Azure.
 
 In this case, you don't need to make any changes to the CSV file, just leave the `Action` column emty. The tool will recheck it on the next run and remove it from the issues list.
 
