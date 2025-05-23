@@ -1,20 +1,36 @@
+# USe the setting to specify the Azure Subscription IDs to target for the migration
 subscriptionIDs:
-  - "67a16f0f-e2c3-4cc4-a17d-c9e4e2a0e8c1"
-  - "a4225384-b567-4381-9ca4-13f5e2e5ab6c"
+  # Connectivity Subscriptiopn ID
+  - "00000000-0000-0000-0000-000000000000"
+  # Management Subscription ID
+  - "00000000-0000-0000-0000-000000000000"
+
+# Use this setting to filter out deployed resources in Azure that are not important for the migration to avoid noise
 ignoreResourceIDPatterns:
+  # Ignore activity log resource group
   - "resourceGroups/Default-ActivityLogAlerts"
+  # Ignore default network watcher resource group
   - "resourceGroups/NetworkWatcherRG"
+  # Ignore deprecated monitoring solutions
   - "Microsoft.OperationsManagement/solutions/ChangeTracking"
   - "Microsoft.OperationsManagement/solutions/SecurityInsights"
+
+# Use this setting to filter out resources from the Terraform module that are not important for the migration to avoid noise
 ignoreResourceTypePatterns:
+  # Ignore telemetry resources
   - "random_uuid.telemetry"
   - "modtm"
+  # Ignore management groups module
   - "module.management_groups"
+  # Ignore resources not created by CAF module
   - "bastion"
   - "dns_resolver"
   - "azurerm_route"
   - "azurerm_route_table"
   - "module.private_dns_zone_auto_registration"
+
+# Use the section to determine which resources to read from the Azure Subscriptions
+# Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
 resourceGraphQueries:
   - name: "Resource Groups"
     query: |
@@ -39,6 +55,8 @@ resourceGraphQueries:
       | project id, name, type, location, subscriptionId, resourceGroup, peerings = properties.virtualNetworkPeerings
       | mv-expand peerings
       | project name = tostring(peerings.name), id = tostring(peerings.id), type = tostring(peerings.type), location, subscriptionId, resourceGroup
+
+# Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
 nameFormats:
   - type: azurerm_log_analytics_solution
     nameFormat: "%s(%s)"
