@@ -1,2 +1,4 @@
-source:
-  format: "zip"
+version: 2
+
+archives:
+  - format: zip
