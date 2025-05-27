@@ -31,6 +31,10 @@ func (m *mockPlanClient) PlanAndGetResources() []*types.PlanResource {
 	return m.Resources
 }
 
+func (m *mockPlanClient) PlanAsText() {
+	m.Called = true
+}
+
 type mockJsonClient struct {
 	Called    bool
 	Resources map[string]any

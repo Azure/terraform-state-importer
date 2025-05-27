@@ -46,6 +46,17 @@ to quickly create a Cobra application.`,
 			log.Debugf("Command Flag: %s = %s", key, value)
 		}
 
+		workingFolderPath, err := filepathparser.ParsePath(viper.GetString("workingFolderPath"))
+		if err != nil {
+			log.Fatalf("Error getting working folder path: %v", err)
+		}
+		terraformModulePath, err := filepathparser.ParsePath(viper.GetString("terraformModulePath"))
+		if err != nil {
+			log.Fatalf("Error getting terraform module path: %v", err)
+		}
+
+		planAsTextOnly, _ := cmd.Flags().GetBool("planAsTextOnly")
+
 		resourceGraphQueries := []types.ResourceGraphQuery{}
 		resourceGraphQueriesRaw := viper.Get("resourceGraphQueries").([]any)
 		for _, rawQuery := range resourceGraphQueriesRaw {
@@ -74,15 +85,6 @@ to quickly create a Cobra application.`,
 			})
 		}
 
-		workingFolderPath, err := filepathparser.ParsePath(viper.GetString("workingFolderPath"))
-		if err != nil {
-			log.Fatalf("Error getting working folder path: %v", err)
-		}
-		terraformModulePath, err := filepathparser.ParsePath(viper.GetString("terraformModulePath"))
-		if err != nil {
-			log.Fatalf("Error getting terraform module path: %v", err)
-		}
-
 		resourceGraphClient := azure.NewResourceGraphClient(
 			viper.GetStringSlice("subscriptionIDs"),
 			viper.GetStringSlice("ignoreResourceIDPatterns"),
@@ -105,6 +107,11 @@ to quickly create a Cobra application.`,
 			jsonClient,
 			log,
 		)
+
+		if planAsTextOnly {
+			planClient.PlanAsText()
+			return
+		}
 
 		issueCsvClient := csv.NewIssueCsvClient(
 			workingFolderPath,
@@ -149,4 +156,6 @@ func init() {
 	viper.BindPFlag("issuesCsv", runCmd.PersistentFlags().Lookup("issuesCsv"))
 	runCmd.PersistentFlags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
+	runCmd.PersistentFlags().BoolP("planAsTextOnly", "p", false, "Run the tool to generate a textual plan only")
+	viper.BindPFlag("planAsTextOnly", runCmd.PersistentFlags().Lookup("planAsTextOnly"))
 }

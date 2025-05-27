@@ -15,6 +15,7 @@ import (
 
 type IPlanClient interface {
 	PlanAndGetResources() []*types.PlanResource
+	PlanAsText()
 }
 
 type PlanClient struct {
@@ -59,12 +60,28 @@ func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
 
 		planClient.executeTerraformInit(chDir)
 		planClient.executeTerraformPlan(chDir, planFileName)
-		planClient.executeTerraformShow(chDir, planFileName, jsonFileName)
+		planClient.executeTerraformShow(chDir, planFileName, jsonFileName, true)
 		planClient.removeBackendOverrideFile(backendOverrideFilePath)
 	}
 
 	plan := planClient.JsonClient.Import(jsonFileName)
 	return planClient.readResourcesFromPlan(plan)
+}
+
+func (planClient *PlanClient) PlanAsText() {
+	textFileName := "tfplan.txt"
+
+	if !planClient.SkipInitPlanShow {
+		planFileName := "tfplan"
+		backendOverrideFilePath := planClient.createBackendOverrideFile()
+		chDir := fmt.Sprintf("-chdir=%s", planClient.TerraformModulePath)
+		planClient.Logger.Info("Running Terraform init, plan and show")
+
+		planClient.executeTerraformInit(chDir)
+		planClient.executeTerraformPlan(chDir, planFileName)
+		planClient.executeTerraformShow(chDir, planFileName, textFileName, false)
+		planClient.removeBackendOverrideFile(backendOverrideFilePath)
+	}
 }
 
 func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*types.PlanResource {
@@ -175,11 +192,16 @@ func (planClient *PlanClient) executeTerraformPlan(chDir string, planFileName st
 	}
 }
 
-func (planClient *PlanClient) executeTerraformShow(chDir string, planFileName string, jsonFileName string) {
+func (planClient *PlanClient) executeTerraformShow(chDir string, planFileName string, outputFileName string, jsonPlan bool) {
 	planFilePath := filepath.Join(planClient.WorkingFolderPath, planFileName)
-	jsonFilePath := filepath.Join(planClient.WorkingFolderPath, jsonFileName)
+	jsonFilePath := filepath.Join(planClient.WorkingFolderPath, outputFileName)
 
-	cmd := exec.Command("terraform", chDir, "show", "-json", planFilePath)
+	argument := "-json"
+	if !jsonPlan {
+		argument = "-no-color"
+	}
+
+	cmd := exec.Command("terraform", chDir, "show", argument, planFilePath)
 	file, err := os.Create(jsonFilePath)
 	if err != nil {
 		planClient.Logger.Fatalf("Failed to create file: %v", err)
