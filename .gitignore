@@ -27,5 +27,6 @@ go.work.sum
 *.csv
 *.json
 tfplan
+*.txt
 
 config.yaml

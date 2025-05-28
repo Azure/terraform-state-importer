@@ -1,0 +1,74 @@
+# Use this setting to specify the Azure Subscription IDs to target for the migration
+subscriptionIDs:
+  # Connectivity Subscriptiopn ID
+  - "00000000-0000-0000-0000-000000000000"
+  # Management Subscription ID
+  - "00000000-0000-0000-0000-000000000000"
+
+# Use this setting to filter out deployed resources in Azure that are not important for the migration to avoid noise
+ignoreResourceIDPatterns:
+  # Ignore activity log resource group
+  - "resourceGroups/Default-ActivityLogAlerts"
+  # Ignore default network watcher resource group
+  - "resourceGroups/NetworkWatcherRG"
+  # Ignore deprecated monitoring solutions
+  - "Microsoft.OperationsManagement/solutions/ChangeTracking"
+  - "Microsoft.OperationsManagement/solutions/SecurityInsights"
+
+# Use this setting to filter out resources from the Terraform module that are not important for the migration to avoid noise
+ignoreResourceTypePatterns:
+  # Ignore telemetry resources
+  - "random_uuid.telemetry"
+  - "modtm"
+  # Ignore management groups module
+  - "module.management_groups"
+  # Ignore resources not created by CAF module
+  - "bastion"
+  - "dns_resolver"
+  - "azurerm_route"
+  - "azurerm_route_table"
+  - "module.private_dns_zone_auto_registration"
+  - "azurerm_private_dns_zone_virtual_network_link"
+  - "module.virtual_network_side_car"
+
+# Use the section to determine which resources to read from the Azure Subscriptions
+# Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
+resourceGraphQueries:
+  - name: "Resource Groups"
+    query: |
+      resourcecontainers
+      | where type == "microsoft.resources/subscriptions/resourcegroups"
+      | project id, name, type, location, subscriptionId, resourceGroup = name
+  - name: "Top Level Resources"
+    query: |
+      resources
+      | project name, id, type, location, subscriptionId, resourceGroup
+  - name: "Virtual Network Subnets"
+    query: |
+      resources
+      | where type == "microsoft.network/virtualnetworks"
+      | project id, name, type, location, subscriptionId, resourceGroup, subnets = properties.subnets
+      | mv-expand subnets
+      | project name = tostring(subnets.name), id = tostring(subnets.id), type = tostring(subnets.type), location, subscriptionId, resourceGroup
+  - name: "Virtual Network Peerings"
+    query: |
+      resources
+      | where type == "microsoft.network/virtualnetworks"
+      | project id, name, type, location, subscriptionId, resourceGroup, peerings = properties.virtualNetworkPeerings
+      | mv-expand peerings
+      | project name = tostring(peerings.name), id = tostring(peerings.id), type = tostring(peerings.type), location, subscriptionId, resourceGroup
+
+# Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
+nameFormats:
+  - type: azurerm_log_analytics_solution
+    nameFormat: "%s(%s)"
+    nameMatchType: Exact
+    nameFormatArguments:
+      - solution_name
+      - workspace_name
+  - type: azurerm_private_dns_zone_virtual_network_link
+    nameFormat: "providers/Microsoft.Network/privateDnsZones/%s/virtualNetworkLinks/%s"
+    nameMatchType: IDContains
+    nameFormatArguments:
+      - private_dns_zone_name
+      - name

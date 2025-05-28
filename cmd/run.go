@@ -103,6 +103,7 @@ to quickly create a Cobra application.`,
 			resourceGraphClient.SubscriptionIDs[0],
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
+			viper.GetBool("skipInitOnly"),
 			nameFormats,
 			jsonClient,
 			log,
@@ -156,6 +157,8 @@ func init() {
 	viper.BindPFlag("issuesCsv", runCmd.PersistentFlags().Lookup("issuesCsv"))
 	runCmd.PersistentFlags().BoolP("skipInitPlanShow", "x", false, "Skip init, plan, and show steps")
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
+	runCmd.PersistentFlags().BoolP("skipInitOnly", "k", false, "Skip init step")
+	viper.BindPFlag("skipInitOnly", runCmd.PersistentFlags().Lookup("skipInitOnly"))
 	runCmd.PersistentFlags().BoolP("planAsTextOnly", "p", false, "Run the tool to generate a textual plan only")
 	viper.BindPFlag("planAsTextOnly", runCmd.PersistentFlags().Lookup("planAsTextOnly"))
 }

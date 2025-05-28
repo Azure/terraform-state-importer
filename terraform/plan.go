@@ -24,18 +24,20 @@ type PlanClient struct {
 	SubscriptionID             string
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
+	SkipInitOnly               bool
 	NameFormats                []NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, nameFormats []NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
 		SubscriptionID:             subscriptionID,
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
+		SkipInitOnly:               skipInitOnly,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
@@ -58,7 +60,9 @@ func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
 		chDir := fmt.Sprintf("-chdir=%s", planClient.TerraformModulePath)
 		planClient.Logger.Info("Running Terraform init, plan and show")
 
-		planClient.executeTerraformInit(chDir)
+		if !planClient.SkipInitOnly {
+			planClient.executeTerraformInit(chDir)
+		}
 		planClient.executeTerraformPlan(chDir, planFileName)
 		planClient.executeTerraformShow(chDir, planFileName, jsonFileName, true)
 		planClient.removeBackendOverrideFile(backendOverrideFilePath)
@@ -77,11 +81,16 @@ func (planClient *PlanClient) PlanAsText() {
 		chDir := fmt.Sprintf("-chdir=%s", planClient.TerraformModulePath)
 		planClient.Logger.Info("Running Terraform init, plan and show")
 
-		planClient.executeTerraformInit(chDir)
+		if !planClient.SkipInitOnly {
+			planClient.executeTerraformInit(chDir)
+		}
 		planClient.executeTerraformPlan(chDir, planFileName)
 		planClient.executeTerraformShow(chDir, planFileName, textFileName, false)
 		planClient.removeBackendOverrideFile(backendOverrideFilePath)
 	}
+
+	outputFileName := "tfplan_updates.txt"
+	planClient.ExtractUpdateResourcesFromPlan(textFileName, outputFileName)
 }
 
 func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*types.PlanResource {
