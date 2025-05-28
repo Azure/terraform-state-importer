@@ -32,7 +32,7 @@ func NewIssueCsvClient(workingFolderPath string, issueCsvPath string, logger *lo
 	return &IssueCsvClient{
 		WorkingFolderPath: workingFolderPath,
 		IssueCsvPath:      issueCsvPath,
-		IssueCsv:          &IssueCsv{Header: []string{"Issue ID", "Issue Type", "Resource Address", "Resource Name", "Resource Type", "Resource Location", "Mapped Resource ID", "Action", "Action ID"}},
+		IssueCsv:          &IssueCsv{Header: []string{"Issue ID", "Issue Type", "Resource Address", "Resource Name", "Resource Type", "Resource Sub Type", "Resource Location", "Mapped Resource ID", "Action", "Action ID"}},
 		Logger:            logger,
 	}
 }
@@ -47,6 +47,7 @@ type IssueCsvRow struct {
 	ResourceAddress  string
 	ResourceName     string
 	ResourceType     string
+	ResourceSubType  string
 	ResourceLocation string
 	MappedResourceID string
 	Action           types.ActionType
@@ -58,6 +59,7 @@ func (csvClient *IssueCsvClient) Export(issues map[string]types.Issue) {
 		resourceAddress := issue.ResourceAddress
 		resourceName := issue.ResourceName
 		resourceType := issue.ResourceType
+		resourceSubType := issue.ResourceSubType
 		resourceLocation := issue.ResourceLocation
 
 		if issue.IssueType == types.IssueTypeMultipleResourceIDs {
@@ -68,6 +70,7 @@ func (csvClient *IssueCsvClient) Export(issues map[string]types.Issue) {
 					ResourceAddress:  resourceAddress,
 					ResourceName:     resourceName,
 					ResourceType:     resourceType,
+					ResourceSubType:  resourceSubType,
 					ResourceLocation: resourceLocation,
 					MappedResourceID: mappedResource,
 					Action:           types.ActionTypeNone,
@@ -82,6 +85,7 @@ func (csvClient *IssueCsvClient) Export(issues map[string]types.Issue) {
 				ResourceAddress:  resourceAddress,
 				ResourceName:     resourceName,
 				ResourceType:     resourceType,
+				ResourceSubType:  resourceSubType,
 				ResourceLocation: resourceLocation,
 				MappedResourceID: "",
 				Action:           types.ActionTypeNone,
@@ -105,6 +109,7 @@ func (csvClient *IssueCsvClient) writeCsv() {
 			issue.ResourceAddress,
 			issue.ResourceName,
 			issue.ResourceType,
+			issue.ResourceSubType,
 			issue.ResourceLocation,
 			issue.MappedResourceID,
 			string(issue.Action),
@@ -164,10 +169,10 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 			csvClient.Logger.Fatalf("Malformed row in CSV file: %v", record)
 		}
 
-		issueAction := types.ActionType(record[7])
+		issueAction := types.ActionType(record[8])
 
 		if !issueAction.IsValidActionType() || issueAction == types.ActionTypeNone {
-			csvClient.Logger.Fatalf("Action is missing or malformed for Issue ID: %s, Action: %s", record[0], record[7])
+			csvClient.Logger.Fatalf("Action is missing or malformed for Issue ID: %s, Action: %s", record[0], record[8])
 		}
 
 		issue := types.Issue{
@@ -176,8 +181,9 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 			ResourceAddress:   record[2],
 			ResourceName:      record[3],
 			ResourceType:      record[4],
-			ResourceLocation:  record[5],
-			MappedResourceIDs: []string{record[6]},
+			ResourceSubType:   record[5],
+			ResourceLocation:  record[7],
+			MappedResourceIDs: []string{record[7]},
 		}
 
 		switch issue.IssueType {
@@ -214,7 +220,7 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 			}
 
 			if issueAction == types.ActionTypeReplace {
-				actionID := record[8]
+				actionID := record[9]
 
 				if actionID == "" {
 					csvClient.Logger.Fatalf("Action ID is missing for Issue ID: %s, Action: %s", issue.IssueID, issueAction)
@@ -258,7 +264,7 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 }
 
 func validateHeader(header []string) bool {
-	expectedHeader := []string{"Issue ID", "Issue Type", "Resource Address", "Resource Name", "Resource Type", "Resource Location", "Mapped Resource ID", "Action", "Action ID"}
+	expectedHeader := []string{"Issue ID", "Issue Type", "Resource Address", "Resource Name", "Resource Type", "Resource Sub Type", "Resource Location", "Mapped Resource ID", "Action", "Action ID"}
 	if len(header) != len(expectedHeader) {
 		return false
 	}
@@ -281,6 +287,10 @@ func (o ByIssueTypeAddressResourceTypeAndMappedId) Less(i, j int) bool {
 
 	if o[i].ResourceType != o[j].ResourceType {
 		return o[i].ResourceType < o[j].ResourceType
+	}
+
+	if o[i].ResourceSubType != o[j].ResourceSubType {
+		return o[i].ResourceSubType < o[j].ResourceSubType
 	}
 
 	if o[i].ResourceAddress != o[j].ResourceAddress {

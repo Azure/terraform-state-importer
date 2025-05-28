@@ -11,12 +11,12 @@ import (
 )
 
 type mockResourceGraphClient struct {
-	Resources []types.GraphResource
+	Resources []*types.GraphResource
 	Err       error
 	Called    bool
 }
 
-func (m *mockResourceGraphClient) GetResources() ([]types.GraphResource, error) {
+func (m *mockResourceGraphClient) GetResources() ([]*types.GraphResource, error) {
 	m.Called = true
 	return m.Resources, m.Err
 }
@@ -74,7 +74,7 @@ func (m *mockHclClient) Export(importBlocks []types.ImportBlock, fileName string
 
 func TestMappingClient_Map_WithNoIssues(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{{ID: "1", Name: "res1", Type: "type1", Location: "eastus"}}
+	graphResources := []*types.GraphResource{{ID: "1", Name: "res1", Type: "type1", Location: "eastus"}}
 	planResources := []*types.PlanResource{{
 		Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus", ResourceNameMatchType: types.NameMatchTypeExact,
 	}}
@@ -99,7 +99,7 @@ func TestMappingClient_Map_WithNoIssues(t *testing.T) {
 
 func TestMappingClient_Map_WithIssues(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{{ID: "1", Name: "res1", Type: "type1", Location: "eastus"}}
+	graphResources := []*types.GraphResource{{ID: "1", Name: "res1", Type: "type1", Location: "eastus"}}
 	planResources := []*types.PlanResource{{
 		Address: "addr1", ResourceName: "res2", Type: "type1", Location: "eastus", ResourceNameMatchType: types.NameMatchTypeExact,
 	}}
@@ -162,7 +162,7 @@ func TestMappingClient_Map_WithErrorFromResourceGraphClient(t *testing.T) {
 
 func TestMappingClient_Map_WithIDContainsMatch(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{{ID: "/subscriptions/123/resourcegroups/rg1/providers/type1/res1", Name: "res1", Type: "type1", Location: "eastus"}}
+	graphResources := []*types.GraphResource{{ID: "/subscriptions/123/resourcegroups/rg1/providers/type1/res1", Name: "res1", Type: "type1", Location: "eastus"}}
 	planResources := []*types.PlanResource{{
 		Address: "addr1", ResourceName: "rg1", Type: "type1", Location: "eastus", ResourceNameMatchType: types.NameMatchTypeIDContains,
 	}}
@@ -186,7 +186,7 @@ func TestMappingClient_Map_WithIDContainsMatch(t *testing.T) {
 
 func TestMappingClient_Map_WithMultipleResourcesSameLocation(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{
+	graphResources := []*types.GraphResource{
 		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
 		{ID: "2", Name: "res1", Type: "type1", Location: "eastus"},
 	}
@@ -227,7 +227,7 @@ func TestMappingClient_Map_WithMultipleResourcesSameLocation(t *testing.T) {
 
 func TestMappingClient_Map_WithEmptyResources(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{}
+	graphResources := []*types.GraphResource{}
 	planResources := []*types.PlanResource{}
 	mappingClient := &MappingClient{
 		WorkingFolderPath:   ".",
@@ -249,7 +249,7 @@ func TestMappingClient_Map_WithEmptyResources(t *testing.T) {
 
 func TestMappingClient_Map_LocationBasedFiltering(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{
+	graphResources := []*types.GraphResource{
 		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
 		{ID: "2", Name: "res1", Type: "type1", Location: "westus"},
 	}
@@ -276,7 +276,7 @@ func TestMappingClient_Map_LocationBasedFiltering(t *testing.T) {
 
 func TestMappingClient_Map_WithResourceIDContainedInLocation(t *testing.T) {
 	logger := logrus.New()
-	graphResources := []types.GraphResource{
+	graphResources := []*types.GraphResource{
 		{ID: "1/eastus/resource", Name: "res1", Type: "type1", Location: "somewhere"},
 		{ID: "2/westus/resource", Name: "res1", Type: "type1", Location: "somewhere"},
 	}

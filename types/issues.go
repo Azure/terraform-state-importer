@@ -6,6 +6,7 @@ type Issue struct {
 	ResourceAddress   string
 	ResourceName      string
 	ResourceType      string
+	ResourceSubType   string
 	ResourceLocation  string
 	MappedResourceIDs []string
 	Resolution        IssueResolution

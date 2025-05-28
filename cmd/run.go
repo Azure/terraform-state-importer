@@ -68,24 +68,27 @@ to quickly create a Cobra application.`,
 		}
 
 		nameFormats := []terraform.NameFormat{}
-		nameFormatsRaw := viper.Get("nameFormats").([]any)
-		for _, rawNameFormat := range nameFormatsRaw {
-			nameFormatMap := rawNameFormat.(map[string]any)
-			nameFormatArguments := []string{}
+		if viper.InConfig("nameFormats")  {
+			nameFormatsRaw := viper.Get("nameFormats").([]any)
+			for _, rawNameFormat := range nameFormatsRaw {
+				nameFormatMap := rawNameFormat.(map[string]any)
+				nameFormatArguments := []string{}
 
-			for _, arg := range nameFormatMap["nameformatarguments"].([]any) {
-				nameFormatArguments = append(nameFormatArguments, arg.(string))
+				for _, arg := range nameFormatMap["nameformatarguments"].([]any) {
+					nameFormatArguments = append(nameFormatArguments, arg.(string))
+				}
+
+				nameFormats = append(nameFormats, terraform.NameFormat{
+					Type:                nameFormatMap["type"].(string),
+					NameFormat:          nameFormatMap["nameformat"].(string),
+					NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
+					NameFormatArguments: nameFormatArguments,
+				})
 			}
-
-			nameFormats = append(nameFormats, terraform.NameFormat{
-				Type:                nameFormatMap["type"].(string),
-				NameFormat:          nameFormatMap["nameformat"].(string),
-				NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
-				NameFormatArguments: nameFormatArguments,
-			})
 		}
 
 		resourceGraphClient := azure.NewResourceGraphClient(
+			viper.GetStringSlice("managementGroupIDs"),
 			viper.GetStringSlice("subscriptionIDs"),
 			viper.GetStringSlice("ignoreResourceIDPatterns"),
 			resourceGraphQueries,
@@ -100,7 +103,7 @@ to quickly create a Cobra application.`,
 		planClient := terraform.NewPlanClient(
 			terraformModulePath,
 			workingFolderPath,
-			resourceGraphClient.SubscriptionIDs[0],
+			viper.GetString("planSubscriptionID"),
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
@@ -142,13 +145,7 @@ to quickly create a Cobra application.`,
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-
-	runCmd.PersistentFlags().StringSliceP("subscriptionIDs", "s", nil, "Subscription IDs to use")
-	viper.BindPFlag("subscriptionIDs", runCmd.PersistentFlags().Lookup("subscriptionIDs"))
-	runCmd.PersistentFlags().StringSliceP("ignoreResourceIDPatterns", "i", nil, "Resource ID patterns to ignore")
-	viper.BindPFlag("ignoreResourceIDPatterns", runCmd.PersistentFlags().Lookup("ignoreResourceIDPatterns"))
-	runCmd.PersistentFlags().StringSliceP("ignoreResourceTypePatterns", "r", nil, "Resource type patterns to ignore")
-	viper.BindPFlag("ignoreResourceTypePatterns", runCmd.PersistentFlags().Lookup("ignoreResourceTypePatterns"))
+	
 	runCmd.PersistentFlags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
 	viper.BindPFlag("terraformModulePath", runCmd.PersistentFlags().Lookup("terraformModulePath"))
 	runCmd.PersistentFlags().StringP("workingFolderPath", "w", ".", "Working folder path to use")
@@ -161,4 +158,6 @@ func init() {
 	viper.BindPFlag("skipInitOnly", runCmd.PersistentFlags().Lookup("skipInitOnly"))
 	runCmd.PersistentFlags().BoolP("planAsTextOnly", "p", false, "Run the tool to generate a textual plan only")
 	viper.BindPFlag("planAsTextOnly", runCmd.PersistentFlags().Lookup("planAsTextOnly"))
+	runCmd.PersistentFlags().StringP("planSubscriptionID", "s", "", "Subscription ID to use for terraform plan if not using the az cli subscription ID")
+	viper.BindPFlag("planSubscriptionID", runCmd.PersistentFlags().Lookup("planSubscriptionID"))
 }

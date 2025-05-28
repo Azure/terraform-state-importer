@@ -14,42 +14,82 @@ import (
 )
 
 type IResourceGraphClient interface {
-	GetResources() ([]types.GraphResource, error)
+	GetResources() ([]*types.GraphResource, error)
 }
 
 type ResourceGraphClient struct {
-	SubscriptionIDs          []string
+	ManagementGroupIDs	     []*string
+	SubscriptionIDs          []*string
 	IgnoreResourceIDPatterns []string
 	ResourceGraphQueries     []types.ResourceGraphQuery
 	Logger                   *logrus.Logger
 }
 
-func NewResourceGraphClient(subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []types.ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
+func NewResourceGraphClient(managementGroupIDs []string, subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []types.ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
+	// Convert string slices to pointer slices
+	managementGroupIDsPtr := make([]*string, len(managementGroupIDs))
+	for i, id := range managementGroupIDs {
+		managementGroupIDsPtr[i] = &id
+	}
+	subscriptionIDsPtr := make([]*string, len(subscriptionIDs))
+	for i, id := range subscriptionIDs {
+		subscriptionIDsPtr[i] = &id
+	}
+
 	return &ResourceGraphClient{
-		SubscriptionIDs:          subscriptionIDs,
+		ManagementGroupIDs:       managementGroupIDsPtr,
+		SubscriptionIDs:          subscriptionIDsPtr,
 		IgnoreResourceIDPatterns: ignoreResourceIDPatterns,
 		ResourceGraphQueries:     resourceGraphQueries,
 		Logger:                   logger,
 	}
 }
 
-func (graph *ResourceGraphClient) GetResources() ([]types.GraphResource, error) {
+func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		graph.Logger.Fatal(err)
 	}
 
-	resources := []types.GraphResource{}
+	resources := []*types.GraphResource{}
 
-	for _, subscriptionID := range graph.SubscriptionIDs {
-		graph.Logger.Infof("Checking Subscription ID: %s", subscriptionID)
-		resources = graph.getResources(subscriptionID, cred, resources)
+	if len(graph.SubscriptionIDs) > 0 {
+		graph.Logger.Info("Running graph queries for Subscriptions")
+        resources = graph.getResourcesBySubscriptionID(cred, resources)
+	} else if len(graph.ManagementGroupIDs) > 0 {
+		graph.Logger.Info("Running graph queries for Management Groups")
+		resources = graph.getResourcesByManagementGroupID(cred, resources)
+
+	} else {
+		graph.Logger.Fatal("Subscription IDs or Management Group IDs must be provided")
 	}
 
 	return resources, nil
 }
 
-func (graph *ResourceGraphClient) getResources(subscriptionID string, cred *azidentity.DefaultAzureCredential, resources []types.GraphResource) []types.GraphResource {
+func (graph *ResourceGraphClient) getResourcesByManagementGroupID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+	queryRequest := armresourcegraph.QueryRequest{
+		Options:       &armresourcegraph.QueryRequestOptions{
+			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
+		},
+		ManagementGroups: graph.ManagementGroupIDs,
+	}
+
+	return graph.getResources(queryRequest, cred, resources)
+}
+
+func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+	queryRequest := armresourcegraph.QueryRequest{
+		Options:       &armresourcegraph.QueryRequestOptions{
+			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
+		},
+		Subscriptions: graph.ManagementGroupIDs,
+	}
+
+	return graph.getResources(queryRequest, cred, resources)
+}
+
+func (graph *ResourceGraphClient) getResources(queryRequest armresourcegraph.QueryRequest, cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
 	for _, query := range graph.ResourceGraphQueries {
 		graph.Logger.Infof("Running Resource Graph Query: %s", query.Name)
 		graph.Logger.Tracef("Query: %s", query.Query)
@@ -60,10 +100,10 @@ func (graph *ResourceGraphClient) getResources(subscriptionID string, cred *azid
 		}
 
 		ctx := context.Background()
-		res, err := resourcesClient.Resources(ctx, armresourcegraph.QueryRequest{
-			Query:         to.Ptr(query.Query),
-			Subscriptions: []*string{to.Ptr(subscriptionID)},
-		}, nil)
+
+		queryRequest.Query = to.Ptr(query.Query)
+
+		res, err := resourcesClient.Resources(ctx, queryRequest, nil)
 		if err != nil {
 			graph.Logger.Fatal(err)
 		}
@@ -98,7 +138,7 @@ func (graph *ResourceGraphClient) getResources(subscriptionID string, cred *azid
 				Name:     resource["name"].(string),
 				Location: resource["location"].(string),
 			}
-			resources = append(resources, resourceResult)
+			resources = append(resources, &resourceResult)
 		}
 	}
 

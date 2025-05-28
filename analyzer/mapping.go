@@ -91,10 +91,10 @@ func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue 
 	return nil
 }
 
-func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []types.GraphResource, planResources []*types.PlanResource, resolvedIssues *map[string]types.Issue) ([]types.MappedResource, map[string]types.Issue) {
+func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*types.GraphResource, planResources []*types.PlanResource, resolvedIssues *map[string]types.Issue) ([]types.MappedResource, map[string]types.Issue) {
 	finalMappedResources := []types.MappedResource{}
 	issues := map[string]types.Issue{}
-	uniqueUsedResources := make(map[string]types.GraphResource)
+	uniqueUsedResources := make(map[string]*types.GraphResource)
 
 	for _, resource := range planResources {
 		finalMappedResource := types.MappedResource{
@@ -108,6 +108,10 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 			}
 
 			if resource.ResourceNameMatchType == types.NameMatchTypeIDContains && strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
+				resource.MappedResources = append(resource.MappedResources, graphResource)
+			}
+
+			if resource.ResourceNameMatchType == types.NameMatchTypeIDEndsWith && strings.HasSuffix(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
 			}
 		}
@@ -131,7 +135,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 						matchedGraphResourceID := (*resolvedIssues)[resolvedIssue.Resolution.ActionID].ResourceAddress
 						for _, graphResource := range graphResources {
 							if strings.Contains(strings.ToLower(graphResource.ID), strings.ToLower(matchedGraphResourceID)) {
-								resource.MappedResources = []types.GraphResource{graphResource}
+								resource.MappedResources = []*types.GraphResource{graphResource}
 								finalMappedResource.ResourceID = graphResource.ID
 								finalMappedResource.IssueType = types.IssueTypeNoResourceID
 								finalMappedResource.ActionType = types.ActionTypeReplace
@@ -162,7 +166,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 		}
 
 		if len(resource.MappedResources) > 1 {
-			mappedResourceIDsBasedOnLocation := []types.GraphResource{}
+			mappedResourceIDsBasedOnLocation := []*types.GraphResource{}
 
 			for _, mappedResource := range resource.MappedResources {
 				if resource.Location == mappedResource.Location {
@@ -182,7 +186,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []type
 					if resolvedIssue, exists := (*resolvedIssues)[getIdentityHash(resource.Address)]; exists {
 						for _, mappedResource := range resource.MappedResources {
 							if strings.Contains(strings.ToLower(mappedResource.ID), strings.ToLower(resolvedIssue.MappedResourceIDs[0])) {
-								resource.MappedResources = []types.GraphResource{mappedResource}
+								resource.MappedResources = []*types.GraphResource{mappedResource}
 								finalMappedResource.ResourceID = mappedResource.ID
 								finalMappedResource.IssueType = types.IssueTypeMultipleResourceIDs
 								finalMappedResource.ActionType = types.ActionTypeUse
@@ -255,7 +259,7 @@ func addIssue(issues map[string]types.Issue, issue types.Issue, issueType types.
 	issues[issue.IssueID] = issue
 }
 
-func IssueFromGraphResource(graphResource types.GraphResource) types.Issue {
+func IssueFromGraphResource(graphResource *types.GraphResource) types.Issue {
 	issue := types.Issue{}
 	issue.IssueID = getIdentityHash(graphResource.ID)
 	issue.ResourceAddress = graphResource.ID
@@ -273,6 +277,7 @@ func IssueFromPlanResource(planResource *types.PlanResource) types.Issue {
 	issue.ResourceAddress = planResource.Address
 	issue.ResourceName = planResource.ResourceName
 	issue.ResourceType = planResource.Type
+	issue.ResourceSubType = planResource.SubType
 	issue.ResourceLocation = planResource.Location
 	issue.MappedResourceIDs = []string{}
 

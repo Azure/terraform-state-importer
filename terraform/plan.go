@@ -1,11 +1,13 @@
 package terraform
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -93,6 +95,29 @@ func (planClient *PlanClient) PlanAsText() {
 	planClient.ExtractUpdateResourcesFromPlan(textFileName, outputFileName)
 }
 
+func (planClient *PlanClient) getCurrentSubscriptionID() string {
+	cmd := exec.Command("az", "account", "show",  "--query", "id", "-o", "tsv")
+	env := cmd.Environ()
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	cmd.Env = env
+	cmd.Stderr = os.Stderr
+
+	planClient.Logger.Debugf("Running az cli: %s", cmd.String())
+	if err := cmd.Run(); err != nil {
+		planClient.Logger.Fatalf("Error: %s", err)
+	}
+
+	output := stdout.String()
+	output = strings.ReplaceAll(output, "\r", "")
+	output = strings.ReplaceAll(output, "\n", "")
+	planClient.Logger.Debugf("Subscription ID: %s", output)
+
+	return output
+}
+
 func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*types.PlanResource {
 	resources := []*types.PlanResource{}
 
@@ -131,10 +156,16 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		resource.Properties = resourceChange["change"].(map[string]any)["after"].(map[string]any)
 		resource.PropertiesCalculated = resourceChange["change"].(map[string]any)["after_unknown"].(map[string]any)
 
+		if resource.Type == "azapi_resource" {
+			if subType, ok := resource.Properties["type"]; ok {
+				resource.SubType = strings.Split(subType.(string), "@")[0]
+			}
+		}
+
 		foundName := false
 
 		for _, nameFormat := range planClient.NameFormats {
-			if nameFormat.Type == resource.Type {
+			if nameFormat.Type == resource.Type || nameFormat.Type == resource.SubType {
 				nameFormatArguments := []any{}
 				for _, arg := range nameFormat.NameFormatArguments {
 					if val, ok := resource.Properties[arg]; ok {
@@ -190,7 +221,13 @@ func (planClient *PlanClient) executeTerraformPlan(chDir string, planFileName st
 
 	cmd := exec.Command("terraform", chDir, "plan", fmt.Sprintf("-out=%s", planFilePath))
 	env := cmd.Environ()
-	env = append(env, fmt.Sprintf("ARM_SUBSCRIPTION_ID=%s", planClient.SubscriptionID))
+
+	subscriptionID := planClient.SubscriptionID
+	if subscriptionID == "" {
+		subscriptionID = planClient.getCurrentSubscriptionID()
+	}
+
+	env = append(env, fmt.Sprintf("ARM_SUBSCRIPTION_ID=%s", subscriptionID))
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

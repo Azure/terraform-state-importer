@@ -1,0 +1,61 @@
+# Use this setting to specify the Azure Management Group IDs to target for the migration
+managementGroupIDs:
+  # ALZ Root Management Group ID
+  - "alz"
+
+# Use this setting to filter out deployed resources in Azure that are not important for the migration to avoid noise
+ignoreResourceIDPatterns:
+
+# Use this setting to filter out resources from the Terraform module that are not important for the migration to avoid noise
+ignoreResourceTypePatterns:
+  # Ignore telemetry resources
+  - "random_uuid.telemetry"
+  - "modtm"
+  - "module.virtual_wan"
+  - "module.hub_and_spoke_vnet"
+  - "module.resource_groups"
+  - "module.management_resources"
+  - "terraform_data"
+  - "time_sleep"
+
+# Use the section to determine which resources to read from the Azure Subscriptions
+# Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
+resourceGraphQueries:
+  - name: "Management Groups"
+    query: |
+      resourcecontainers
+      | where type == "microsoft.management/managementgroups"
+      | project id, name, type, location, subscriptionId, resourceGroup
+  - name: "Policy Definitions"
+    query: |
+      policyresources
+      | where type == "microsoft.authorization/policydefinitions"
+      | project id, name, type, location, subscriptionId, resourceGroup
+  - name: "Policy Set Definitions"
+    query: |
+      policyresources
+      | where type == "microsoft.authorization/policysetdefinitions"
+      | project id, name, type, location, subscriptionId, resourceGroup
+  - name: "Policy Assignments"
+    query: |
+      policyresources
+      | where type == "microsoft.authorization/policyassignments"
+      | project id, name, type, location, subscriptionId, resourceGroup
+
+
+nameFormats:
+  - type: Microsoft.Authorization/policyAssignments
+    nameFormat: "providers/Microsoft.Authorization/policyAssignments/%s"
+    nameMatchType: IDEndsWith
+    nameFormatArguments:
+      - name
+  - type: Microsoft.Authorization/policyDefinitions
+    nameFormat: "providers/Microsoft.Authorization/policyDefinitions//%s"
+    nameMatchType: IDEndsWith
+    nameFormatArguments:
+      - name
+  - type: Microsoft.Authorization/policySetDefinitions
+    nameFormat: "providers/Microsoft.Authorization/policySetDefinitions/%s"
+    nameMatchType: IDEndsWith
+    nameFormatArguments:
+      - name
