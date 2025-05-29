@@ -4,6 +4,7 @@ type PlanResource struct {
 	Address               string
 	Type                  string
 	SubType               string
+	APIVersion            string
 	Name                  string
 	Location              string
 	ResourceName          string

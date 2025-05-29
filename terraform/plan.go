@@ -158,7 +158,9 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 
 		if resource.Type == "azapi_resource" {
 			if subType, ok := resource.Properties["type"]; ok {
-				resource.SubType = strings.Split(subType.(string), "@")[0]
+				resourceTypeSplit := strings.Split(subType.(string), "@")
+				resource.SubType = resourceTypeSplit[0]
+				resource.APIVersion = resourceTypeSplit[1]
 			}
 		}
 

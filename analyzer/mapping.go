@@ -66,16 +66,20 @@ func (mappingClient *MappingClient) Map() {
 	importBlocks := []types.ImportBlock{}
 	for _, finalMappedResource := range finalMappedResources {
 		if finalMappedResource.ActionType == types.ActionTypeUse {
+			resourceID := finalMappedResource.ResourceID
+			if finalMappedResource.ResourceAPIVersion != "" {
+				resourceID = fmt.Sprintf("%s?api-version=%s", resourceID, finalMappedResource.ResourceAPIVersion)
+			}
+
 			importBlock := types.ImportBlock{
 				To: finalMappedResource.ResourceAddress,
-				ID: finalMappedResource.ResourceID,
+				ID: resourceID,
 			}
 			importBlocks = append(importBlocks, importBlock)
 		}
 	}
 
 	mappingClient.HclClient.Export(importBlocks, "imports.tf")
-
 }
 
 func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue {
@@ -98,8 +102,9 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 
 	for _, resource := range planResources {
 		finalMappedResource := types.MappedResource{
-			Type:            types.MappedResourceTypeTerraform,
-			ResourceAddress: resource.Address,
+			Type:               types.MappedResourceTypeTerraform,
+			ResourceAddress:    resource.Address,
+			ResourceAPIVersion: resource.APIVersion,
 		}
 
 		for _, graphResource := range graphResources {

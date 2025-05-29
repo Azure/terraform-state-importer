@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -22,12 +23,40 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 	updateLines := []string{}
 
 	keepLines := false
+	resourceCommentLines := []string{}
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		if strings.HasPrefix(line, "  #") {
+			resourceCommentLines = append(resourceCommentLines, line)
+		}
+
 		if strings.HasPrefix(line, "  ~ resource ") || strings.HasPrefix(line, "-/+ resource") {
-			keepLines = true
+			shouldIgnore := false
+			for _, pattern := range planClient.IgnoreResourceTypePatterns {
+				if shouldIgnore {
+					break
+				}
+				for _, commentLine := range resourceCommentLines {
+					matched, err := regexp.MatchString(pattern, commentLine)
+					if err != nil {
+						planClient.Logger.Debugf("Error matching pattern %s: %v", pattern, err)
+						continue
+					}
+					if matched {
+						shouldIgnore = true
+						break
+					}
+				}
+			}
+			if shouldIgnore {
+				planClient.Logger.Tracef("Ignoring Resource: %s", line)
+				keepLines = false
+			} else {
+				planClient.Logger.Tracef("Keeping Resource: %s", line)
+				keepLines = true
+			}
 		}
 
 		if keepLines {
@@ -37,6 +66,10 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 		if keepLines && strings.HasPrefix(line, "    }") {
 			keepLines = false
 			updateLines = append(updateLines, "")
+		}
+
+		if strings.HasPrefix(line, "    }") {
+			resourceCommentLines = []string{}
 		}
 	}
 

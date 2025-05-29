@@ -1,11 +1,12 @@
 package types
 
 type MappedResource struct {
-	Type            MappedResourceType
-	ResourceAddress string
-	ResourceID      string
-	IssueType       IssueType
-	ActionType      ActionType
+	Type               MappedResourceType
+	ResourceAddress    string
+	ResourceID         string
+	ResourceAPIVersion string
+	IssueType          IssueType
+	ActionType         ActionType
 }
 
 type MappedResourceType string
