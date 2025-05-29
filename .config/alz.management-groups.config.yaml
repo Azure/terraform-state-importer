@@ -5,18 +5,26 @@ managementGroupIDs:
 
 # Use this setting to filter out deployed resources in Azure that are not important for the migration to avoid noise
 ignoreResourceIDPatterns:
+  # Ignore policy assignments at subscriptipn scope
+  - "/subscriptions/.*/providers/Microsoft.Authorization/policyAssignments"
 
 # Use this setting to filter out resources from the Terraform module that are not important for the migration to avoid noise
 ignoreResourceTypePatterns:
   # Ignore telemetry resources
   - "random_uuid.telemetry"
   - "modtm"
+  # Ignore connectivity modules
   - "module.virtual_wan"
   - "module.hub_and_spoke_vnet"
   - "module.resource_groups"
   - "module.management_resources"
+  # Ignore ancilliary resources
   - "terraform_data"
   - "time_sleep"
+  # Ignore role assignment for policy assignments
+  - "module.management_groups.azapi_resource.policy_role_assignments"
+  # Ignore subscription placement since it is not something we need to import
+  - "module.management_groups.azapi_resource.subscription_placement"
 
 # Use the section to determine which resources to read from the Azure Subscriptions
 # Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
@@ -45,8 +53,15 @@ resourceGraphQueries:
       policyresources
       | where type == "microsoft.authorization/policyassignments"
       | project id, name, type, location, subscriptionId, resourceGroup
+  - name: "Role Definitions"
+    scope: "ManagementGroup"
+    query: |
+      authorizationresources
+      | where type == "microsoft.authorization/roledefinitions"
+      | where properties.type == "CustomRole"
+      | project id = strcat(properties.assignableScopes[0], id), name, type, location, subscriptionId, resourceGroup
 
-
+# Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
 nameFormats:
   - type: Microsoft.Authorization/policyAssignments
     nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
@@ -55,7 +70,7 @@ nameFormats:
       - parent_id
       - name
   - type: Microsoft.Authorization/policyDefinitions
-    nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions//%s"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
       - parent_id
