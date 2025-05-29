@@ -34,7 +34,7 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 			updateLines = append(updateLines, line)
 		}
 
-	    if keepLines && strings.HasPrefix(line, "    }") {
+		if keepLines && strings.HasPrefix(line, "    }") {
 			keepLines = false
 			updateLines = append(updateLines, "")
 		}

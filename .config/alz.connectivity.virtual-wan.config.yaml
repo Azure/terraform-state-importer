@@ -35,15 +35,18 @@ ignoreResourceTypePatterns:
 # Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
 resourceGraphQueries:
   - name: "Resource Groups"
+    scope: "Subscription"
     query: |
       resourcecontainers
       | where type == "microsoft.resources/subscriptions/resourcegroups"
       | project id, name, type, location, subscriptionId, resourceGroup = name
   - name: "Top Level Resources"
+    scope: "Subscription"
     query: |
       resources
       | project name, id, type, location, subscriptionId, resourceGroup
   - name: "Virtual Network Subnets"
+    scope: "Subscription"
     query: |
       resources
       | where type == "microsoft.network/virtualnetworks"
@@ -51,6 +54,7 @@ resourceGraphQueries:
       | mv-expand subnets
       | project name = tostring(subnets.name), id = tostring(subnets.id), type = tostring(subnets.type), location, subscriptionId, resourceGroup
   - name: "Virtual Network Peerings"
+    scope: "Subscription"
     query: |
       resources
       | where type == "microsoft.network/virtualnetworks"

@@ -63,12 +63,13 @@ to quickly create a Cobra application.`,
 			queryMap := rawQuery.(map[string]any)
 			resourceGraphQueries = append(resourceGraphQueries, types.ResourceGraphQuery{
 				Name:  queryMap["name"].(string),
+				Scope: types.ResourceGraphQueryScope(queryMap["scope"].(string)),
 				Query: queryMap["query"].(string),
 			})
 		}
 
 		nameFormats := []terraform.NameFormat{}
-		if viper.InConfig("nameFormats")  {
+		if viper.InConfig("nameFormats") {
 			nameFormatsRaw := viper.Get("nameFormats").([]any)
 			for _, rawNameFormat := range nameFormatsRaw {
 				nameFormatMap := rawNameFormat.(map[string]any)
@@ -145,7 +146,7 @@ to quickly create a Cobra application.`,
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-	
+
 	runCmd.PersistentFlags().StringP("terraformModulePath", "t", ".", "Terraform module path to use")
 	viper.BindPFlag("terraformModulePath", runCmd.PersistentFlags().Lookup("terraformModulePath"))
 	runCmd.PersistentFlags().StringP("workingFolderPath", "w", ".", "Working folder path to use")

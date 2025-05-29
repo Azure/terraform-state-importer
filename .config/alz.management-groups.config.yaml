@@ -22,21 +22,25 @@ ignoreResourceTypePatterns:
 # Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
 resourceGraphQueries:
   - name: "Management Groups"
+    scope: "ManagementGroup"
     query: |
       resourcecontainers
       | where type == "microsoft.management/managementgroups"
       | project id, name, type, location, subscriptionId, resourceGroup
   - name: "Policy Definitions"
+    scope: "ManagementGroup"
     query: |
       policyresources
       | where type == "microsoft.authorization/policydefinitions"
       | project id, name, type, location, subscriptionId, resourceGroup
   - name: "Policy Set Definitions"
+    scope: "ManagementGroup"
     query: |
       policyresources
       | where type == "microsoft.authorization/policysetdefinitions"
       | project id, name, type, location, subscriptionId, resourceGroup
   - name: "Policy Assignments"
+    scope: "ManagementGroup"
     query: |
       policyresources
       | where type == "microsoft.authorization/policyassignments"
@@ -45,17 +49,20 @@ resourceGraphQueries:
 
 nameFormats:
   - type: Microsoft.Authorization/policyAssignments
-    nameFormat: "providers/Microsoft.Authorization/policyAssignments/%s"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
+      - parent_id
       - name
   - type: Microsoft.Authorization/policyDefinitions
-    nameFormat: "providers/Microsoft.Authorization/policyDefinitions//%s"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions//%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
+      - parent_id
       - name
   - type: Microsoft.Authorization/policySetDefinitions
-    nameFormat: "providers/Microsoft.Authorization/policySetDefinitions/%s"
+    nameFormat: "%s/providers/Microsoft.Authorization/policySetDefinitions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
+      - parent_id
       - name

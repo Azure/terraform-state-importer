@@ -2,6 +2,7 @@ package types
 
 type ResourceGraphQuery struct {
 	Name  string
+	Scope ResourceGraphQueryScope
 	Query string
 }
 
@@ -11,3 +12,10 @@ type GraphResource struct {
 	Name     string
 	Location string
 }
+
+type ResourceGraphQueryScope string
+
+const (
+	ResourceGraphQueryScopeManagementGroup ResourceGraphQueryScope = "ManagementGroup"
+	ResourceGraphQueryScopeSubscription    ResourceGraphQueryScope = "Subscription"
+)

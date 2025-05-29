@@ -96,7 +96,7 @@ func (planClient *PlanClient) PlanAsText() {
 }
 
 func (planClient *PlanClient) getCurrentSubscriptionID() string {
-	cmd := exec.Command("az", "account", "show",  "--query", "id", "-o", "tsv")
+	cmd := exec.Command("az", "account", "show", "--query", "id", "-o", "tsv")
 	env := cmd.Environ()
 
 	var stdout bytes.Buffer

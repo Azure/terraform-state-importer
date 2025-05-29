@@ -18,7 +18,7 @@ type IResourceGraphClient interface {
 }
 
 type ResourceGraphClient struct {
-	ManagementGroupIDs	     []*string
+	ManagementGroupIDs       []*string
 	SubscriptionIDs          []*string
 	IgnoreResourceIDPatterns []string
 	ResourceGraphQueries     []types.ResourceGraphQuery
@@ -55,12 +55,15 @@ func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error)
 
 	if len(graph.SubscriptionIDs) > 0 {
 		graph.Logger.Info("Running graph queries for Subscriptions")
-        resources = graph.getResourcesBySubscriptionID(cred, resources)
-	} else if len(graph.ManagementGroupIDs) > 0 {
+		resources = graph.getResourcesBySubscriptionID(cred, resources)
+	}
+
+	if len(graph.ManagementGroupIDs) > 0 {
 		graph.Logger.Info("Running graph queries for Management Groups")
 		resources = graph.getResourcesByManagementGroupID(cred, resources)
+	}
 
-	} else {
+	if len(graph.SubscriptionIDs) == 0 && len(graph.ManagementGroupIDs) == 0 {
 		graph.Logger.Fatal("Subscription IDs or Management Group IDs must be provided")
 	}
 
@@ -69,28 +72,33 @@ func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error)
 
 func (graph *ResourceGraphClient) getResourcesByManagementGroupID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
 	queryRequest := armresourcegraph.QueryRequest{
-		Options:       &armresourcegraph.QueryRequestOptions{
+		Options: &armresourcegraph.QueryRequestOptions{
 			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
 		},
 		ManagementGroups: graph.ManagementGroupIDs,
 	}
 
-	return graph.getResources(queryRequest, cred, resources)
+	return graph.getResources(types.ResourceGraphQueryScopeManagementGroup, queryRequest, cred, resources)
 }
 
 func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
 	queryRequest := armresourcegraph.QueryRequest{
-		Options:       &armresourcegraph.QueryRequestOptions{
+		Options: &armresourcegraph.QueryRequestOptions{
 			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
 		},
 		Subscriptions: graph.ManagementGroupIDs,
 	}
 
-	return graph.getResources(queryRequest, cred, resources)
+	return graph.getResources(types.ResourceGraphQueryScopeSubscription, queryRequest, cred, resources)
 }
 
-func (graph *ResourceGraphClient) getResources(queryRequest armresourcegraph.QueryRequest, cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQueryScope, queryRequest armresourcegraph.QueryRequest, cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
 	for _, query := range graph.ResourceGraphQueries {
+		if query.Scope != scope {
+			graph.Logger.Debugf("Skipping query %s for scope %s", query.Name, scope)
+			continue
+		}
+
 		graph.Logger.Infof("Running Resource Graph Query: %s", query.Name)
 		graph.Logger.Tracef("Query: %s", query.Query)
 

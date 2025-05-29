@@ -3,7 +3,7 @@ package types
 type PlanResource struct {
 	Address               string
 	Type                  string
-	SubType			      string
+	SubType               string
 	Name                  string
 	Location              string
 	ResourceName          string
