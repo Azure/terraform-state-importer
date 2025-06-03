@@ -4,3 +4,7 @@ type ImportBlock struct {
 	ID string
 	To string
 }
+
+type DestroyBlock struct {
+	ID string
+}

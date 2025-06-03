@@ -68,7 +68,11 @@ type mockHclClient struct {
 	Called bool
 }
 
-func (m *mockHclClient) Export(importBlocks []types.ImportBlock, fileName string) {
+func (m *mockHclClient) WriteImportBlocks(importBlocks []types.ImportBlock, fileName string) {
+	m.Called = true
+}
+
+func (m *mockHclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBlock, fileName string) {
 	m.Called = true
 }
 

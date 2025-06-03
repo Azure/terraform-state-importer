@@ -64,8 +64,9 @@ func (mappingClient *MappingClient) Map() {
 	}
 
 	importBlocks := []types.ImportBlock{}
+	destroyBlocks := []types.DestroyBlock{}
 	for _, finalMappedResource := range finalMappedResources {
-		if finalMappedResource.ActionType == types.ActionTypeUse {
+		if finalMappedResource.ActionType == types.ActionTypeUse && finalMappedResource.Type == types.MappedResourceTypeTerraform {
 			resourceID := finalMappedResource.ResourceID
 			if finalMappedResource.ResourceAPIVersion != "" {
 				resourceID = fmt.Sprintf("%s?api-version=%s", resourceID, finalMappedResource.ResourceAPIVersion)
@@ -77,9 +78,17 @@ func (mappingClient *MappingClient) Map() {
 			}
 			importBlocks = append(importBlocks, importBlock)
 		}
+		if finalMappedResource.ActionType == types.ActionTypeReplace && finalMappedResource.Type == types.MappedResourceTypeGraph {
+			resourceID := finalMappedResource.ResourceID
+			destroyBlock := types.DestroyBlock{
+				ID: resourceID,
+			}
+			destroyBlocks = append(destroyBlocks, destroyBlock)
+		}
 	}
 
-	mappingClient.HclClient.Export(importBlocks, "imports.tf")
+	mappingClient.HclClient.WriteImportBlocks(importBlocks, "imports.tf")
+	mappingClient.HclClient.WriteDestroyBlocks(destroyBlocks, "destroy.tf")
 }
 
 func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue {
