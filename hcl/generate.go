@@ -66,7 +66,7 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 			Write-Host "Resource %s not found, skipping deletion."
 		}`, destroyBlock.ID, destroyBlock.ID)
 		provisionerBlock.Body().SetAttributeValue("command", cty.StringVal(destroyCommand))
-		provisionerBlock.Body().SetAttributeValue("shell", cty.StringVal("pwsh"))
+		provisionerBlock.Body().SetAttributeValue("interpreter", cty.ListVal([]cty.Value{cty.StringVal("pwsh"), cty.StringVal("-Command")}))
 		hclFile.Body().AppendNewline()
 	}
 
