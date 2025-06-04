@@ -96,3 +96,7 @@ nameFormats:
     nameFormatArguments:
       - parent_id
       - name
+
+deleteCommands:
+  - type: microsoft.authorization/roleassignments
+    command: "az role assignment delete --ids %s"
