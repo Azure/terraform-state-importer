@@ -76,6 +76,10 @@ func (m *mockHclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBlock, f
 	m.Called = true
 }
 
+func (m *mockHclClient) CleanFiles(filesToRemove []string) {
+	m.Called = true
+}
+
 func TestMappingClient_Map_WithNoIssues(t *testing.T) {
 	logger := logrus.New()
 	graphResources := []*types.GraphResource{{ID: "1", Name: "res1", Type: "type1", Location: "eastus"}}

@@ -2,8 +2,6 @@ package analyzer
 
 import (
 	"crypto/sha256"
-	"os"
-	"path/filepath"
 
 	"fmt"
 	"strings"
@@ -53,7 +51,7 @@ func (mappingClient *MappingClient) Map() {
 	importsFileName := "imports.tf"
 	destroyFileName := "destroy.tf"
 
-	mappingClient.cleanFiles(importsFileName, destroyFileName)
+	mappingClient.HclClient.CleanFiles([]string{importsFileName, destroyFileName})
 
 	planResources := mappingClient.PlanClient.PlanAndGetResources()
 
@@ -97,21 +95,6 @@ func (mappingClient *MappingClient) Map() {
 
 	mappingClient.HclClient.WriteImportBlocks(importBlocks, importsFileName)
 	mappingClient.HclClient.WriteDestroyBlocks(destroyBlocks, destroyFileName)
-}
-
-func (mappingClient *MappingClient) cleanFiles(importsFileName string, destroyFileName string) {
-	importsFilePath := filepath.Join(mappingClient.WorkingFolderPath, importsFileName)
-	destroyFilePath := filepath.Join(mappingClient.WorkingFolderPath, destroyFileName)
-
-	filesToRemove := []string{importsFilePath, destroyFilePath}
-	for _, filePath := range filesToRemove {
-		if _, err := os.Stat(filePath); err == nil {
-			mappingClient.Logger.Debugf("File %s already exists, it will be deleted", importsFileName)
-			if err := os.Remove(filePath); err != nil {
-				mappingClient.Logger.Fatalf("Error deleting existing imports file: %v", err)
-			}
-		}
-	}
 }
 
 func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue {

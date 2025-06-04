@@ -16,6 +16,7 @@ import (
 type IHclClient interface {
 	WriteImportBlocks(resources []types.ImportBlock, fileName string)
 	WriteDestroyBlocks(resources []types.DestroyBlock, fileName string)
+	CleanFiles(filesToRemove []string)
 }
 
 type HclClient struct {
@@ -77,4 +78,16 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 	}
 
 	hclClient.Logger.Infof("HCL imports file %s written to: %s", fileName, hclFilePath)
+}
+
+func (hclClient *HclClient) CleanFiles(filesToRemove []string) {
+	for _, fileName := range filesToRemove {
+		filePath := filepath.Join(hclClient.TerraformModulePath, fileName)
+		if _, err := os.Stat(filePath); err == nil {
+			hclClient.Logger.Debugf("File %s already exists, it will be deleted", filePath)
+			if err := os.Remove(filePath); err != nil {
+				hclClient.Logger.Fatalf("Error deleting existing imports file: %v", err)
+			}
+		}
+	}
 }
