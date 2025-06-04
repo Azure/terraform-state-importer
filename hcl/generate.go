@@ -56,15 +56,16 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 	hclFilePath := filepath.Join(hclClient.TerraformModulePath, fileName)
 	hclFile := hclwrite.NewEmptyFile()
 
-	for _, destroyBlock := range destroyBlocks {
-		resourceBlock := hclFile.Body().AppendNewBlock("terraform_data", nil)
+	for i, destroyBlock := range destroyBlocks {
+		resourceBlock := hclFile.Body().AppendNewBlock("resource", []string{"terraform_data", fmt.Sprintf("destroy_%03d", i+1)})
 		provisionerBlock := resourceBlock.Body().AppendNewBlock("provisioner", []string{"local-exec"})
 		destroyCommand := fmt.Sprintf(`$resourceID = (az resource show --ids %s | ConvertFrom-Json | Select-Object -ExpandProperty id)
 		if ($resourceID -ne $null) {
-			az resource delete --ids $resourceID --no-wait --yes
+			Write-Host "Deleting resource %s..."
+			az resource delete --ids $resourceID
 		} else {
 			Write-Host "Resource %s not found, skipping deletion."
-		}`, destroyBlock.ID, destroyBlock.ID)
+		}`, destroyBlock.ID, destroyBlock.ID, destroyBlock.ID)
 		provisionerBlock.Body().SetAttributeValue("command", cty.StringVal(destroyCommand))
 		provisionerBlock.Body().SetAttributeValue("interpreter", cty.ListVal([]cty.Value{cty.StringVal("pwsh"), cty.StringVal("-Command")}))
 		hclFile.Body().AppendNewline()

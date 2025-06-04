@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"crypto/sha256"
+	"os"
+	"path/filepath"
 
 	"fmt"
 	"strings"
@@ -47,6 +49,12 @@ func (mappingClient *MappingClient) Map() {
 	if err != nil {
 		mappingClient.Logger.Fatalf("Error getting resources from Resource Graph: %v", err)
 	}
+
+	importsFileName := "imports.tf"
+	destroyFileName := "destroy.tf"
+
+	mappingClient.cleanFiles(importsFileName, destroyFileName)
+
 	planResources := mappingClient.PlanClient.PlanAndGetResources()
 
 	finalMappedResources, issues := mappingClient.mapResourcesFromGraphToPlan(graphResources, planResources, resolvedIssues)
@@ -78,7 +86,7 @@ func (mappingClient *MappingClient) Map() {
 			}
 			importBlocks = append(importBlocks, importBlock)
 		}
-		if finalMappedResource.ActionType == types.ActionTypeReplace && finalMappedResource.Type == types.MappedResourceTypeGraph {
+		if (finalMappedResource.ActionType == types.ActionTypeReplace || finalMappedResource.ActionType == types.ActionTypeDestroy) && finalMappedResource.Type == types.MappedResourceTypeGraph {
 			resourceID := finalMappedResource.ResourceID
 			destroyBlock := types.DestroyBlock{
 				ID: resourceID,
@@ -87,8 +95,23 @@ func (mappingClient *MappingClient) Map() {
 		}
 	}
 
-	mappingClient.HclClient.WriteImportBlocks(importBlocks, "imports.tf")
-	mappingClient.HclClient.WriteDestroyBlocks(destroyBlocks, "destroy.tf")
+	mappingClient.HclClient.WriteImportBlocks(importBlocks, importsFileName)
+	mappingClient.HclClient.WriteDestroyBlocks(destroyBlocks, destroyFileName)
+}
+
+func (mappingClient *MappingClient) cleanFiles(importsFileName string, destroyFileName string) {
+	importsFilePath := filepath.Join(mappingClient.WorkingFolderPath, importsFileName)
+	destroyFilePath := filepath.Join(mappingClient.WorkingFolderPath, destroyFileName)
+
+	filesToRemove := []string{importsFilePath, destroyFilePath}
+	for _, filePath := range filesToRemove {
+		if _, err := os.Stat(filePath); err == nil {
+			mappingClient.Logger.Debugf("File %s already exists, it will be deleted", importsFileName)
+			if err := os.Remove(filePath); err != nil {
+				mappingClient.Logger.Fatalf("Error deleting existing imports file: %v", err)
+			}
+		}
+	}
 }
 
 func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue {
@@ -244,12 +267,12 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 				if resolvedIssue, exists := (*resolvedIssues)[issue.IssueID]; exists {
 					if resolvedIssue.Resolution.ActionType == types.ActionTypeIgnore {
 						importer.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
-						finalMappedResource.ActionType = types.ActionTypeIgnore
+						finalMappedResource.ActionType = resolvedIssue.Resolution.ActionType
 						resolved = true
 					}
-					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace {
-						importer.Logger.Debugf("Ignoring via Replace Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
-						finalMappedResource.ActionType = types.ActionTypeReplace
+					if resolvedIssue.Resolution.ActionType == types.ActionTypeReplace || resolvedIssue.Resolution.ActionType == types.ActionTypeDestroy {
+						importer.Logger.Debugf("Destroying via Replace or Destroy Issue ID: %s, Action: %s", resolvedIssue.IssueID, resolvedIssue.Resolution.ActionType)
+						finalMappedResource.ActionType = resolvedIssue.Resolution.ActionType
 						resolved = true
 					}
 				} else {

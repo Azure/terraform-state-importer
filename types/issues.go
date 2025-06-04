@@ -45,6 +45,7 @@ const (
 	ActionTypeUse     ActionType = "Use"
 	ActionTypeIgnore  ActionType = "Ignore"
 	ActionTypeReplace ActionType = "Replace"
+	ActionTypeDestroy ActionType = "Destroy"
 )
 
 func (actionType ActionType) IsValidActionType() bool {
@@ -52,7 +53,8 @@ func (actionType ActionType) IsValidActionType() bool {
 	case ActionTypeNone,
 		ActionTypeUse,
 		ActionTypeIgnore,
-		ActionTypeReplace:
+		ActionTypeReplace,
+		ActionTypeDestroy:
 		return true
 	default:
 		return false

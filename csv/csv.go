@@ -236,8 +236,8 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 				}
 			}
 		case types.IssueTypeUnusedResourceID:
-			if issueAction != types.ActionTypeIgnore && issueAction != types.ActionTypeReplace {
-				csvClient.Logger.Fatalf("Action for UnusedResourceID must be Ignore or Replace for Issue ID: %s, Action: %s", issue.IssueID, issueAction)
+			if issueAction != types.ActionTypeIgnore && issueAction != types.ActionTypeReplace && issueAction != types.ActionTypeDestroy {
+				csvClient.Logger.Fatalf("Action for UnusedResourceID must be Ignore, Replace, or Destroy for Issue ID: %s, Action: %s", issue.IssueID, issueAction)
 			}
 			if issueAction == types.ActionTypeIgnore {
 				csvClient.Logger.Debugf("Ignoring Issue ID: %s, Action: %s", issue.IssueID, issueAction)
@@ -246,8 +246,8 @@ func (csvClient *IssueCsvClient) Import() (*map[string]types.Issue, error) {
 					ActionID:   "",
 				}
 			}
-			if issueAction == types.ActionTypeReplace {
-				csvClient.Logger.Debugf("Ignoring via Replace Issue ID: %s, Action: %s", issue.IssueID, issueAction)
+			if issueAction == types.ActionTypeReplace || issueAction == types.ActionTypeDestroy {
+				csvClient.Logger.Debugf("Destroying via Replace or Destroy Issue ID: %s, Action: %s", issue.IssueID, issueAction)
 				issue.Resolution = types.IssueResolution{
 					ActionType: issueAction,
 					ActionID:   "",
