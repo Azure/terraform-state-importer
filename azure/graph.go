@@ -94,7 +94,7 @@ func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.
 		Options: &armresourcegraph.QueryRequestOptions{
 			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
 		},
-		Subscriptions: graph.ManagementGroupIDs,
+		Subscriptions: graph.SubscriptionIDs,
 	}
 
 	return graph.getResources(types.ResourceGraphQueryScopeSubscription, queryRequest, cred, resources)
