@@ -63,7 +63,7 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 		destroyCommand := fmt.Sprintf(`$resourceID = (az resource show --ids %s | ConvertFrom-Json | Select-Object -ExpandProperty id)
 		if ($resourceID -ne $null) {
 			Write-Host "Deleting resource %s..."
-			az resource delete --ids $resourceID
+			az resource delete --ids $resourceID --verbose
 		} else {
 			Write-Host "Resource %s not found, skipping deletion."
 		}`, destroyBlock.ID, destroyBlock.ID, destroyBlock.ID)
