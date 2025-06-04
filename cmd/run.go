@@ -88,6 +88,18 @@ to quickly create a Cobra application.`,
 			}
 		}
 
+		deleteCommands := []types.DeleteCommand{}
+		if viper.InConfig("deleteCommands") {
+			deleteCommandsRaw := viper.Get("deleteCommands").([]any)
+			for _, rawDeleteCommand := range deleteCommandsRaw {
+				deleteCommandMap := rawDeleteCommand.(map[string]any)
+				deleteCommands = append(deleteCommands, types.DeleteCommand{
+					Type:    deleteCommandMap["type"].(string),
+					Command: deleteCommandMap["command"].(string),
+				})
+			}
+		}
+
 		resourceGraphClient := azure.NewResourceGraphClient(
 			viper.GetStringSlice("managementGroupIDs"),
 			viper.GetStringSlice("subscriptionIDs"),

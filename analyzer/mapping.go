@@ -88,6 +88,7 @@ func (mappingClient *MappingClient) Map() {
 			resourceID := finalMappedResource.ResourceID
 			destroyBlock := types.DestroyBlock{
 				ID: resourceID,
+				Type: finalMappedResource.ResourceType,
 			}
 			destroyBlocks = append(destroyBlocks, destroyBlock)
 		}
@@ -120,6 +121,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 			Type:               types.MappedResourceTypeTerraform,
 			ResourceAddress:    resource.Address,
 			ResourceAPIVersion: resource.APIVersion,
+			ResourceType:       resource.Type,
 		}
 
 		for _, graphResource := range graphResources {

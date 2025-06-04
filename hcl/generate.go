@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -21,6 +22,7 @@ type IHclClient interface {
 
 type HclClient struct {
 	TerraformModulePath string
+	DeleteCommands      []types.DeleteCommand
 	Logger              *logrus.Logger
 }
 
@@ -30,6 +32,14 @@ func NewHclClient(terraformModulePath string, logger *logrus.Logger) *HclClient 
 		Logger:              logger,
 	}
 }
+
+const defaultDeleteCommand = `$resourceID = (az resource show --ids %s | ConvertFrom-Json | Select-Object -ExpandProperty id)
+if ($resourceID -ne $null) {
+	Write-Host "Deleting resource..."
+	az resource delete --ids $resourceID --verbose
+} else {
+	Write-Host "Resource not found, skipping deletion."
+}`
 
 func (hclClient *HclClient) WriteImportBlocks(importBlocks []types.ImportBlock, fileName string) {
 	hclFilePath := filepath.Join(hclClient.TerraformModulePath, fileName)
@@ -60,13 +70,15 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 	for i, destroyBlock := range destroyBlocks {
 		resourceBlock := hclFile.Body().AppendNewBlock("resource", []string{"terraform_data", fmt.Sprintf("destroy_%03d", i+1)})
 		provisionerBlock := resourceBlock.Body().AppendNewBlock("provisioner", []string{"local-exec"})
-		destroyCommand := fmt.Sprintf(`$resourceID = (az resource show --ids %s | ConvertFrom-Json | Select-Object -ExpandProperty id)
-		if ($resourceID -ne $null) {
-			Write-Host "Deleting resource %s..."
-			az resource delete --ids $resourceID --verbose
-		} else {
-			Write-Host "Resource %s not found, skipping deletion."
-		}`, destroyBlock.ID, destroyBlock.ID, destroyBlock.ID)
+
+		destroyCommandTemplate := defaultDeleteCommand
+		for _, deleteCommand := range hclClient.DeleteCommands {
+			if strings.ToLower(deleteCommand.Type) == strings.ToLower(destroyBlock.Type) {
+				destroyCommandTemplate = deleteCommand.Command
+			}
+		}
+
+		destroyCommand := fmt.Sprintf(destroyCommandTemplate, destroyBlock.ID)
 		provisionerBlock.Body().SetAttributeValue("command", cty.StringVal(destroyCommand))
 		provisionerBlock.Body().SetAttributeValue("interpreter", cty.ListVal([]cty.Value{cty.StringVal("pwsh"), cty.StringVal("-Command")}))
 		hclFile.Body().AppendNewline()

@@ -7,4 +7,5 @@ type ImportBlock struct {
 
 type DestroyBlock struct {
 	ID string
+	Type string
 }
