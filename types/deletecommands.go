@@ -1,6 +1,6 @@
 package types
 
 type DeleteCommand struct {
-	Type string
+	Type    string
 	Command string
 }

@@ -70,6 +70,7 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 
 	for i, destroyBlock := range destroyBlocks {
 		resourceBlock := hclFile.Body().AppendNewBlock("resource", []string{"terraform_data", fmt.Sprintf("destroy_%03d", i+1)})
+
 		provisionerBlock := resourceBlock.Body().AppendNewBlock("provisioner", []string{"local-exec"})
 
 		destroyCommandTemplate := defaultDeleteCommand
@@ -80,6 +81,7 @@ func (hclClient *HclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBloc
 		}
 
 		destroyCommand := fmt.Sprintf(destroyCommandTemplate, destroyBlock.ID)
+		resourceBlock.Body().SetAttributeValue("triggers_replace", cty.StringVal(destroyCommand))
 		provisionerBlock.Body().SetAttributeValue("command", cty.StringVal(destroyCommand))
 		provisionerBlock.Body().SetAttributeValue("interpreter", cty.ListVal([]cty.Value{cty.StringVal("pwsh"), cty.StringVal("-Command")}))
 		hclFile.Body().AppendNewline()

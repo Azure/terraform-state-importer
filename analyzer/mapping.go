@@ -87,7 +87,7 @@ func (mappingClient *MappingClient) Map() {
 		if (finalMappedResource.ActionType == types.ActionTypeReplace || finalMappedResource.ActionType == types.ActionTypeDestroy) && finalMappedResource.Type == types.MappedResourceTypeGraph {
 			resourceID := finalMappedResource.ResourceID
 			destroyBlock := types.DestroyBlock{
-				ID: resourceID,
+				ID:   resourceID,
 				Type: finalMappedResource.ResourceType,
 			}
 			destroyBlocks = append(destroyBlocks, destroyBlock)
@@ -243,6 +243,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 				Type:            types.MappedResourceTypeGraph,
 				ResourceAddress: "",
 				ResourceID:      graphResource.ID,
+				ResourceType:    graphResource.Type,
 				IssueType:       types.IssueTypeUnusedResourceID,
 			}
 

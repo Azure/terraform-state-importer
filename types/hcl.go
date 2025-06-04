@@ -6,6 +6,6 @@ type ImportBlock struct {
 }
 
 type DestroyBlock struct {
-	ID string
+	ID   string
 	Type string
 }
