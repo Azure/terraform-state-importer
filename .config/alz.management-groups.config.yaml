@@ -24,7 +24,7 @@ ignoreResourceTypePatterns:
   # Ignore role assignment for policy assignments
   - "module.management_groups.azapi_resource.policy_role_assignments"
   # Ignore subscription placement since it is not something we need to import
-  - "module.management_groups.azapi_resource.subscription_placement"
+  #- "module.management_groups.azapi_resource.subscription_placement"
 
 # Use the section to determine which resources to read from the Azure Subscriptions
 # Interface must match `id`, `name`, `type`, `location`, `subscriptionId`, `resourceGroup`
@@ -35,6 +35,14 @@ resourceGraphQueries:
       resourcecontainers
       | where type == "microsoft.management/managementgroups"
       | project id, name, type, location, subscriptionId, resourceGroup
+  - name: "Management Group Subscriptions"
+    scope: "ManagementGroup"
+    query: |
+      resourcecontainers
+      | where type == "microsoft.resources/subscriptions"
+      | extend mnagementGroup = properties.managementGroupAncestorsChain[0].name
+      | extend subscriptionPlacement =  strcat("/providers/Microsoft.Management/managementGroups/", mnagementGroup, id)
+      | project id = subscriptionPlacement, name, type, location, subscriptionId, resourceGroup
   - name: "Policy Definitions"
     scope: "ManagementGroup"
     query: |
@@ -93,6 +101,12 @@ nameFormats:
       - name
   - type: Microsoft.Authorization/policySetDefinitions
     nameFormat: "%s/providers/Microsoft.Authorization/policySetDefinitions/%s"
+    nameMatchType: IDEndsWith
+    nameFormatArguments:
+      - parent_id
+      - name
+  - type: Microsoft.Management/managementGroups/subscriptions
+    nameFormat: "%s/subscriptions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
       - parent_id

@@ -55,7 +55,7 @@ func (mappingClient *MappingClient) Map() {
 
 	planResources := mappingClient.PlanClient.PlanAndGetResources()
 
-	finalMappedResources, issues := mappingClient.mapResourcesFromGraphToPlan(graphResources, planResources, resolvedIssues)
+	finalMappedResources, issues, errors := mappingClient.mapResourcesFromGraphToPlan(graphResources, planResources, resolvedIssues)
 
 	mappingClient.JsonClient.Export(issues, "issues.json")
 	mappingClient.JsonClient.Export(planResources, "resources.json")
@@ -63,10 +63,16 @@ func (mappingClient *MappingClient) Map() {
 	if len(issues) > 0 {
 		mappingClient.Logger.Warnf("Found %d issues based on the Terraform Plan and Resource Graph Queries", len(issues))
 		mappingClient.IssueCsvClient.Export(issues)
+		if len(errors) > 0 {
+			mappingClient.Logger.Fatalf("Found %d errors during mapping: %v", len(errors), errors)
+		}
 		return
 	} else {
 		mappingClient.Logger.Info("No issues found based on the Terraform Plan and Resource Graph Queries")
 		mappingClient.JsonClient.Export(finalMappedResources, "final.json")
+		if len(errors) > 0 {
+			mappingClient.Logger.Fatalf("Found %d errors during mapping: %v", len(errors), errors)
+		}
 	}
 
 	importBlocks := []types.ImportBlock{}
@@ -111,10 +117,11 @@ func (mappingClient *MappingClient) getResolvedIssues() *map[string]types.Issue 
 	return nil
 }
 
-func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*types.GraphResource, planResources []*types.PlanResource, resolvedIssues *map[string]types.Issue) ([]types.MappedResource, map[string]types.Issue) {
+func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*types.GraphResource, planResources []*types.PlanResource, resolvedIssues *map[string]types.Issue) ([]types.MappedResource, map[string]types.Issue, []string) {
 	finalMappedResources := []types.MappedResource{}
 	issues := map[string]types.Issue{}
 	uniqueUsedResources := make(map[string]*types.GraphResource)
+	errors := []string{}
 
 	for _, resource := range planResources {
 		finalMappedResource := types.MappedResource{
@@ -167,9 +174,10 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 						}
 					}
 				} else {
-					importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+					errorMessage := fmt.Sprintf("No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+					errors = append(errors, errorMessage)
+					importer.Logger.Warn(errorMessage)
 				}
-
 			}
 
 			if !resolved {
@@ -217,7 +225,9 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 							}
 						}
 					} else {
-						importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+						errorMessage := fmt.Sprintf("No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+						errors = append(errors, errorMessage)
+						importer.Logger.Warn(errorMessage)
 					}
 				}
 
@@ -262,7 +272,9 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 						resolved = true
 					}
 				} else {
-					importer.Logger.Fatalf("Error: No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, graphResource.Name, graphResource.Type, graphResource.ID)
+					errorMessage := fmt.Sprintf("No matching issue resolution found for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, graphResource.Name, graphResource.Type, graphResource.ID)
+					errors = append(errors, errorMessage)
+					importer.Logger.Warn(errorMessage)
 				}
 			}
 
@@ -274,7 +286,7 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 			}
 		}
 	}
-	return finalMappedResources, issues
+	return finalMappedResources, issues, errors
 }
 
 func addIssue(issues map[string]types.Issue, issue types.Issue, issueType types.IssueType) {
