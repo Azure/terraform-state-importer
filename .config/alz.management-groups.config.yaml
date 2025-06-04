@@ -60,6 +60,21 @@ resourceGraphQueries:
       | where type == "microsoft.authorization/roledefinitions"
       | where properties.type == "CustomRole"
       | project id = strcat(properties.assignableScopes[0], id), name, type, location, subscriptionId, resourceGroup
+  - name: "Role Assignments for Policy Assignments"
+    scope: "ManagementGroup"
+    query: |
+      authorizationresources
+      | where type == "microsoft.authorization/roleassignments"
+      | extend principalId = tostring(properties.principalId)
+      | join kind=inner(
+      policyresources
+      | where type == "microsoft.authorization/policyassignments"
+      | where isnotnull(identity)
+      | extend bag_key = tostring(bag_keys(identity.userAssignedIdentities)[0])
+      | extend bag_value = identity.userAssignedIdentities[bag_key]
+      | extend principalId = tostring(coalesce(bag_value.principalId, identity.principalId))
+      ) on principalId
+      | project id, name, type, location, subscriptionId, resourceGroup
 
 # Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
 nameFormats:
