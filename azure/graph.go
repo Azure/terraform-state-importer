@@ -54,6 +54,14 @@ func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error)
 	resources := []*types.GraphResource{}
 
 	if len(graph.SubscriptionIDs) > 0 {
+		emptyGuid := "00000000-0000-0000-0000-000000000000"
+		guidRegex := regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+		for _, subscriptionID := range graph.SubscriptionIDs {
+			if subscriptionID == &emptyGuid || !guidRegex.MatchString(*subscriptionID) {
+				graph.Logger.Fatalf("Invalid Subscription ID: %s", *subscriptionID)
+				continue
+			}
+		}
 		graph.Logger.Info("Running graph queries for Subscriptions")
 		resources = graph.getResourcesBySubscriptionID(cred, resources)
 	}
