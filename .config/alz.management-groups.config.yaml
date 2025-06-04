@@ -65,6 +65,7 @@ resourceGraphQueries:
     query: |
       authorizationresources
       | where type == "microsoft.authorization/roleassignments"
+      | where properties.description != "Created by ALZ Terraform provider. Assignment required for Azure Policy."
       | extend principalId = tostring(properties.principalId)
       | join kind=inner(
       policyresources

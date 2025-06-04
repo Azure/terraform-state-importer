@@ -138,6 +138,7 @@ to quickly create a Cobra application.`,
 
 		hclClient := hcl.NewHclClient(
 			terraformModulePath,
+			deleteCommands,
 			log,
 		)
 

@@ -26,9 +26,10 @@ type HclClient struct {
 	Logger              *logrus.Logger
 }
 
-func NewHclClient(terraformModulePath string, logger *logrus.Logger) *HclClient {
+func NewHclClient(terraformModulePath string, deleteCommands []types.DeleteCommand, logger *logrus.Logger) *HclClient {
 	return &HclClient{
 		TerraformModulePath: terraformModulePath,
+		DeleteCommands:      deleteCommands,
 		Logger:              logger,
 	}
 }
