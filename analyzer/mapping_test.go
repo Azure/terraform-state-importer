@@ -66,6 +66,7 @@ func (m *mockIssueCsvClient) Import() (*map[string]types.Issue, error) {
 
 type mockHclClient struct {
 	Called bool
+	CleanFilesCalled bool
 }
 
 func (m *mockHclClient) WriteImportBlocks(importBlocks []types.ImportBlock, fileName string) {
@@ -77,7 +78,7 @@ func (m *mockHclClient) WriteDestroyBlocks(destroyBlocks []types.DestroyBlock, f
 }
 
 func (m *mockHclClient) CleanFiles(filesToRemove []string) {
-	m.Called = true
+	m.CleanFilesCalled = true
 }
 
 func TestMappingClient_Map_WithNoIssues(t *testing.T) {
@@ -128,6 +129,7 @@ func TestMappingClient_Map_WithIssues(t *testing.T) {
 	assert.True(t, mappingClient.JsonClient.(*mockJsonClient).Called)
 	assert.True(t, mappingClient.IssueCsvClient.(*mockIssueCsvClient).Called)
 	assert.False(t, mappingClient.HclClient.(*mockHclClient).Called)
+	assert.True(t, mappingClient.HclClient.(*mockHclClient).CleanFilesCalled)
 
 	assert.Equal(t, len(*mappingClient.IssueCsvClient.(*mockIssueCsvClient).Issues), 2)
 
