@@ -25,6 +25,21 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 	keepLines := false
 	resourceCommentLines := []string{}
 
+	updatePrefixes := []string{
+		"      ~",
+		"      -",
+		"      +",
+	}
+
+	skippablePrefixes := []string{
+		"      + replace_triggers_external_values",
+		"      + retry",
+		"      + timeouts",
+		"      ~ output",
+	}
+
+	resourceBuffer := []string{}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -33,6 +48,7 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 		}
 
 		if strings.HasPrefix(line, "  ~ resource ") || strings.HasPrefix(line, "-/+ resource") {
+			resourceBuffer = []string{}
 			shouldIgnore := false
 			for _, pattern := range planClient.IgnoreResourceTypePatterns {
 				if shouldIgnore {
@@ -60,12 +76,41 @@ func (planClient *PlanClient) ExtractUpdateResourcesFromPlan(sourcePlanFileName 
 		}
 
 		if keepLines {
-			updateLines = append(updateLines, line)
+			resourceBuffer = append(resourceBuffer, line)
 		}
 
 		if keepLines && strings.HasPrefix(line, "    }") {
 			keepLines = false
-			updateLines = append(updateLines, "")
+
+			skippable := true
+			for _, bufferLine := range resourceBuffer {
+				for _, updatePrefix := range updatePrefixes {
+					if strings.HasPrefix(bufferLine, updatePrefix) {
+						anySkippableMatches := false
+						for _, skippablePrefix := range skippablePrefixes {
+							if strings.HasPrefix(bufferLine, skippablePrefix) {
+								planClient.Logger.Tracef("Skippable Line Match: %s", line)
+								anySkippableMatches = true
+								break
+							} else {
+								planClient.Logger.Tracef("No Skippable Line: %s", line)
+							}
+						}
+						if !anySkippableMatches {
+							skippable = false
+							planClient.Logger.Tracef("Non Skippable Line: %s", line)
+						} else {
+							planClient.Logger.Tracef("Skippable Line: %s", line)
+						}
+					}
+				}
+			}
+
+			if !skippable {
+				updateLines = append(updateLines, resourceCommentLines...)
+				updateLines = append(updateLines, resourceBuffer...)
+				updateLines = append(updateLines, "")
+			}
 		}
 
 		if strings.HasPrefix(line, "    }") {
