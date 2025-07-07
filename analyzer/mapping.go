@@ -325,5 +325,5 @@ func IssueFromPlanResource(planResource *types.PlanResource) types.Issue {
 
 func getIdentityHash(id string) string {
 	sha256ID := sha256.Sum256([]byte(id))
-	return fmt.Sprintf("%x", sha256ID)[0:7]
+	return fmt.Sprintf("i-%x", sha256ID)[0:7]
 }
