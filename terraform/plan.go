@@ -2,7 +2,9 @@ package terraform
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/azure/terraform-state-importer/json"
+	localjson "github.com/azure/terraform-state-importer/json"
 	"github.com/azure/terraform-state-importer/types"
 )
 
@@ -27,12 +29,13 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
+	ReusePlan                  bool
 	NameFormats                []NameFormat
-	JsonClient                 json.IJsonClient
+	JsonClient                 localjson.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, reusePlan bool, nameFormats []NameFormat, jsonClient localjson.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -40,6 +43,7 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
 		SkipInitOnly:               skipInitOnly,
+		ReusePlan:                  reusePlan,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
@@ -55,18 +59,29 @@ type NameFormat struct {
 
 func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
 	jsonFileName := "tfplan.json"
+	planFileName := "tfplan"
 
 	if !planClient.SkipInitPlanShow {
-		planFileName := "tfplan"
 		backendOverrideFilePath := planClient.createBackendOverrideFile()
 		chDir := fmt.Sprintf("-chdir=%s", planClient.TerraformModulePath)
-		planClient.Logger.Info("Running Terraform init, plan and show")
-
-		if !planClient.SkipInitOnly {
-			planClient.executeTerraformInit(chDir)
+		
+		// Check if we can reuse existing plan files
+		canReusePlan := planClient.ReusePlan && 
+			planClient.isPlanFresh(planFileName, jsonFileName) && 
+			planClient.isJsonPlanValid(jsonFileName)
+		
+		if canReusePlan {
+			planClient.Logger.Info("Reusing existing terraform plan files")
+		} else {
+			planClient.Logger.Info("Running Terraform init, plan and show")
+			
+			if !planClient.SkipInitOnly {
+				planClient.executeTerraformInit(chDir)
+			}
+			planClient.executeTerraformPlan(chDir, planFileName)
+			planClient.executeTerraformShow(chDir, planFileName, jsonFileName, true)
 		}
-		planClient.executeTerraformPlan(chDir, planFileName)
-		planClient.executeTerraformShow(chDir, planFileName, jsonFileName, true)
+		
 		planClient.removeBackendOverrideFile(backendOverrideFilePath)
 	}
 
@@ -76,18 +91,32 @@ func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
 
 func (planClient *PlanClient) PlanAsText() {
 	textFileName := "tfplan.txt"
+	planFileName := "tfplan"
 
 	if !planClient.SkipInitPlanShow {
-		planFileName := "tfplan"
 		backendOverrideFilePath := planClient.createBackendOverrideFile()
 		chDir := fmt.Sprintf("-chdir=%s", planClient.TerraformModulePath)
-		planClient.Logger.Info("Running Terraform init, plan and show")
-
-		if !planClient.SkipInitOnly {
-			planClient.executeTerraformInit(chDir)
+		
+		// Check if we can reuse existing plan files
+		// For text output, we need both the binary plan and text file to exist and be fresh
+		textFilePath := filepath.Join(planClient.WorkingFolderPath, textFileName)
+		_, textErr := os.Stat(textFilePath)
+		canReusePlan := planClient.ReusePlan && 
+			textErr == nil &&
+			planClient.isPlanFresh(planFileName, textFileName)
+		
+		if canReusePlan {
+			planClient.Logger.Info("Reusing existing terraform plan files")
+		} else {
+			planClient.Logger.Info("Running Terraform init, plan and show")
+			
+			if !planClient.SkipInitOnly {
+				planClient.executeTerraformInit(chDir)
+			}
+			planClient.executeTerraformPlan(chDir, planFileName)
+			planClient.executeTerraformShow(chDir, planFileName, textFileName, false)
 		}
-		planClient.executeTerraformPlan(chDir, planFileName)
-		planClient.executeTerraformShow(chDir, planFileName, textFileName, false)
+		
 		planClient.removeBackendOverrideFile(backendOverrideFilePath)
 	}
 
@@ -116,6 +145,98 @@ func (planClient *PlanClient) getCurrentSubscriptionID() string {
 	planClient.Logger.Debugf("Subscription ID: %s", output)
 
 	return output
+}
+
+// isPlanFresh checks if the existing plan files are newer than the Terraform configuration files
+func (planClient *PlanClient) isPlanFresh(planFileName string, jsonFileName string) bool {
+	planFilePath := filepath.Join(planClient.WorkingFolderPath, planFileName)
+	jsonFilePath := filepath.Join(planClient.WorkingFolderPath, jsonFileName)
+
+	// Check if both plan files exist
+	planStat, err := os.Stat(planFilePath)
+	if err != nil {
+		planClient.Logger.Debugf("Plan file %s does not exist: %v", planFilePath, err)
+		return false
+	}
+
+	jsonStat, err := os.Stat(jsonFilePath)
+	if err != nil {
+		planClient.Logger.Debugf("JSON plan file %s does not exist: %v", jsonFilePath, err)
+		return false
+	}
+
+	// Use the older of the two plan files as the reference time
+	planTime := planStat.ModTime()
+	if jsonStat.ModTime().Before(planTime) {
+		planTime = jsonStat.ModTime()
+	}
+
+	// Check if any .tf files in the module directory are newer than the plan
+	freshness := true
+	err = filepath.WalkDir(planClient.TerraformModulePath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip files we can't read
+		}
+
+		// Only check .tf and .tf.json files
+		if !strings.HasSuffix(d.Name(), ".tf") && !strings.HasSuffix(d.Name(), ".tf.json") {
+			return nil
+		}
+
+		// Skip the backend override file we create
+		if d.Name() == "backend_override.tf" {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil // Skip files we can't stat
+		}
+
+		if info.ModTime().After(planTime) {
+			planClient.Logger.Debugf("Terraform file %s is newer than plan (file: %v, plan: %v)", path, info.ModTime(), planTime)
+			freshness = false
+			return filepath.SkipAll // Stop walking, we found a newer file
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		planClient.Logger.Debugf("Error walking terraform module directory: %v", err)
+		return false
+	}
+
+	return freshness
+}
+
+// isJsonPlanValid checks if the JSON plan file contains valid terraform plan data
+func (planClient *PlanClient) isJsonPlanValid(jsonFileName string) bool {
+	jsonFilePath := filepath.Join(planClient.WorkingFolderPath, jsonFileName)
+
+	// Read and parse the JSON file
+	data, err := os.ReadFile(jsonFilePath)
+	if err != nil {
+		planClient.Logger.Debugf("Cannot read JSON plan file %s: %v", jsonFilePath, err)
+		return false
+	}
+
+	// Parse as JSON to check validity
+	var planData map[string]interface{}
+	err = json.Unmarshal(data, &planData)
+	if err != nil {
+		planClient.Logger.Debugf("JSON plan file %s is not valid JSON: %v", jsonFilePath, err)
+		return false
+	}
+
+	// Check for required terraform plan structure
+	if _, ok := planData["resource_changes"]; !ok {
+		planClient.Logger.Debugf("JSON plan file %s missing resource_changes field", jsonFilePath)
+		return false
+	}
+
+	planClient.Logger.Debugf("JSON plan file %s is valid", jsonFilePath)
+	return true
 }
 
 func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*types.PlanResource {
