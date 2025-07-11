@@ -215,6 +215,12 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 				if importer.HasInputCsv {
 					if resolvedIssue, exists := (*resolvedIssues)[getIdentityHash(resource.Address)]; exists {
 						for _, mappedResource := range resource.MappedResources {
+							if(len(resolvedIssue.MappedResourceIDs) == 0) {
+								errorMessage := fmt.Sprintf("No 'Use' match resolution specified for Issue ID, check your CSV file and try again: %s Name: %s, Type: %s, Address: %s", issue.IssueID, resource.ResourceName, resource.Type, resource.Address)
+								errors = append(errors, errorMessage)
+								importer.Logger.Warn(errorMessage)
+								break
+							}
 							if strings.Contains(strings.ToLower(mappedResource.ID), strings.ToLower(resolvedIssue.MappedResourceIDs[0])) {
 								resource.MappedResources = []*types.GraphResource{mappedResource}
 								finalMappedResource.ResourceID = mappedResource.ID

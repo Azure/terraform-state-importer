@@ -310,3 +310,214 @@ func TestMappingClient_Map_WithResourceIDContainedInLocation(t *testing.T) {
 	assert.True(t, mappingClient.JsonClient.(*mockJsonClient).Called)
 	assert.False(t, mappingClient.IssueCsvClient.(*mockIssueCsvClient).Called)
 }
+func Test_mapResourcesFromGraphToPlan_ExactMatch(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, mapped[0].ResourceID, "1")
+	assert.Equal(t, mapped[0].ActionType, types.ActionTypeUse)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_IDContainsMatch(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "/foo/bar/res1", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "bar", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeIDContains,
+		},
+	}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, mapped[0].ResourceID, "/foo/bar/res1")
+	assert.Equal(t, mapped[0].ActionType, types.ActionTypeUse)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_IDEndsWithMatch(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "/foo/bar/res1", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeIDEndsWith,
+		},
+	}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, mapped[0].ResourceID, "/foo/bar/res1")
+	assert.Equal(t, mapped[0].ActionType, types.ActionTypeUse)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_MultipleMatches_LocationFilter(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
+		{ID: "2", Name: "res1", Type: "type1", Location: "westus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, mapped[0].ResourceID, "1")
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_MultipleMatches_NoLocationFilter_Issue(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
+		{ID: "2", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Empty(t, mapped)
+	assert.Len(t, issues, 1)
+	for _, issue := range issues {
+		assert.Equal(t, types.IssueTypeMultipleResourceIDs, issue.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_UnusedGraphResource_Issue(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{}
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Empty(t, mapped)
+	assert.Len(t, issues, 1)
+	for _, issue := range issues {
+		assert.Equal(t, types.IssueTypeUnusedResourceID, issue.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_ResolvedIssue_Ignore(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "notfound", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	issueID := getIdentityHash("addr1")
+	resolvedIssues := map[string]types.Issue{
+		issueID: {
+			IssueID: issueID,
+			Resolution: types.IssueResolution{
+				ActionType: types.ActionTypeIgnore,
+			},
+		},
+	}
+	client := &MappingClient{Logger: logger, HasInputCsv: true}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, &resolvedIssues)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, types.ActionTypeIgnore, mapped[0].ActionType)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_ResolvedIssue_UnusedGraphResource_Destroy(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "1", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{}
+	issueID := getIdentityHash("1")
+	resolvedIssues := map[string]types.Issue{
+		issueID: {
+			IssueID: issueID,
+			Resolution: types.IssueResolution{
+				ActionType: types.ActionTypeDestroy,
+			},
+		},
+	}
+	client := &MappingClient{Logger: logger, HasInputCsv: true}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, &resolvedIssues)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, types.ActionTypeDestroy, mapped[0].ActionType)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_ResolvedIssue_MultipleResourceIDs_Use(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{
+		{ID: "id1", Name: "res1", Type: "type1", Location: "eastus"},
+		{ID: "id2", Name: "res1", Type: "type1", Location: "eastus"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "res1", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	issueID := getIdentityHash("addr1")
+	resolvedIssues := map[string]types.Issue{
+		issueID: {
+			IssueID: issueID,
+			MappedResourceIDs: []string{"id2"},
+		},
+	}
+	client := &MappingClient{Logger: logger, HasInputCsv: true}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, &resolvedIssues)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, "id2", mapped[0].ResourceID)
+	assert.Equal(t, types.ActionTypeUse, mapped[0].ActionType)
+	assert.Empty(t, issues)
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_ResolvedIssue_MissingResolution_Error(t *testing.T) {
+	logger := logrus.New()
+	graphResources := []*types.GraphResource{}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1", ResourceName: "notfound", Type: "type1", Location: "eastus",
+			ResourceNameMatchType: types.NameMatchTypeExact,
+		},
+	}
+	resolvedIssues := map[string]types.Issue{}
+	client := &MappingClient{Logger: logger, HasInputCsv: true}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, &resolvedIssues)
+	assert.Empty(t, mapped)
+	assert.Len(t, issues, 1)
+	assert.Len(t, errs, 1)
+}
