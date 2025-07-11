@@ -120,6 +120,7 @@ to quickly create a Cobra application.`,
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
+			viper.GetBool("reusePlan"),
 			nameFormats,
 			jsonClient,
 			log,
@@ -170,6 +171,8 @@ func init() {
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
 	runCmd.PersistentFlags().BoolP("skipInitOnly", "k", false, "Skip init step")
 	viper.BindPFlag("skipInitOnly", runCmd.PersistentFlags().Lookup("skipInitOnly"))
+	runCmd.PersistentFlags().BoolP("reusePlan", "r", true, "Reuse existing plan files if they are fresh")
+	viper.BindPFlag("reusePlan", runCmd.PersistentFlags().Lookup("reusePlan"))
 	runCmd.PersistentFlags().BoolP("planAsTextOnly", "p", false, "Run the tool to generate a textual plan only")
 	viper.BindPFlag("planAsTextOnly", runCmd.PersistentFlags().Lookup("planAsTextOnly"))
 	runCmd.PersistentFlags().StringP("planSubscriptionID", "s", "", "Subscription ID to use for terraform plan if not using the az cli subscription ID")
