@@ -37,13 +37,16 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "terraform-state-importer",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "Tool for migrating large Azure workloads to Terraform modules",
+	Long: `Terraform State Importer is a tool for running analysis and creating import blocks
+for migrating large Azure workloads to a new module in Terraform.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+The tool helps with two main phases:
+1. Resource ID Mapping: Maps Azure resource IDs to resources in your Terraform module
+2. Resource Attribute Mapping: Provides guidance for mapping Azure resource attributes to module variables
+
+It queries Azure resources across subscriptions/management groups and analyzes a Terraform plan
+to determine which existing Azure resources can be imported into your module.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
