@@ -23,13 +23,24 @@ var log = logrus.New()
 // runCmd represents the run command
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Analyze Azure resources and generate Terraform import blocks",
+	Long: `The run command performs the main analysis workflow:
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+1. Queries Azure for resources using Resource Graph queries (defined in config)
+2. Runs terraform plan on your module to get planned resources
+3. Maps Azure resource IDs to Terraform resources
+4. Generates issues.csv file with mapping conflicts that need resolution
+5. (Optional) With resolved issues.csv, generates final import blocks
+
+Examples:
+  # Basic analysis - generates issues.csv
+  terraform-state-importer run --terraformModulePath ./my-module --config ./config.yaml
+
+  # Generate import blocks after resolving issues
+  terraform-state-importer run --terraformModulePath ./my-module --config ./config.yaml --issuesCsv ./resolved-issues.csv
+
+  # Generate text plan only
+  terraform-state-importer run --planAsTextOnly --terraformModulePath ./my-module`,
 	Run: func(cmd *cobra.Command, args []string) {
 		logVerbosity, _ := cmd.Flags().GetString("verbosity")
 		logLevel, err := logrus.ParseLevel(logVerbosity)
