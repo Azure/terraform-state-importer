@@ -184,6 +184,7 @@ Examples:
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
+			fieldMappings,
 			nameFormats,
 			jsonClient,
 			log,

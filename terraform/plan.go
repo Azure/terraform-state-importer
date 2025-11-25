@@ -27,12 +27,13 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
+	FieldMappings 			   []types.FieldMapping
 	NameFormats                []types.NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, fieldMappings []types.FieldMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -40,6 +41,7 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
 		SkipInitOnly:               skipInitOnly,
+		FieldMappings: 			    fieldMappings,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
@@ -147,6 +149,9 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		resource.Name = resourceChange["name"].(string)
 
 		resource.Properties = resourceChange["change"].(map[string]any)["after"].(map[string]any)
+		resource.Properties["meta.type"] = resource.Type
+		resource.Properties["meta.name"] = resource.Name
+		resource.Properties["meta.address"] = resource.Address
 		resource.PropertiesCalculated = resourceChange["change"].(map[string]any)["after_unknown"].(map[string]any)
 
 		if resource.Type == "azapi_resource" {
@@ -154,6 +159,47 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 				resourceTypeSplit := strings.Split(subType.(string), "@")
 				resource.SubType = resourceTypeSplit[0]
 				resource.APIVersion = resourceTypeSplit[1]
+				resource.Properties["meta.subtype"] = resource.SubType
+				resource.Properties["meta.apiversion"] = resource.APIVersion
+			}
+		}
+
+		if val, ok := resource.Properties["location"]; ok {
+			if val != nil {
+				resource.Location = val.(string)
+				resource.Properties["meta.location"] = resource.Location
+			}
+		}
+
+		resources = append(resources, &resource)
+		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
+	}
+	return planClient.mapNames(resources)
+}
+
+func (planClient *PlanClient) mapNames(resources []*types.PlanResource) []*types.PlanResource {
+	for _, resource := range resources {
+		for _, fieldMapping := range planClient.FieldMappings {
+			if fieldMapping.Type == resource.Type || (fieldMapping.Type == resource.Type && fieldMapping.SubType == resource.SubType) {
+				for _, mappingEntry := range fieldMapping.Mappings {
+					for _, targetField := range mappingEntry.TargetFields {
+						for _, sourceLookupField := range mappingEntry.SourceLookupFields {
+							for _, lookupResource := range resources {
+								if val, ok := lookupResource.Properties[sourceLookupField.Target]; ok {
+									lookupValue := val.(string)
+									for _, replacement := range sourceLookupField.Replacements {
+										re := regexp.MustCompile(replacement.Regex)
+										lookupValue = re.ReplaceAllString(lookupValue, replacement.Replacement)
+									}
+									resource.Properties[targetField.Name] = lookupValue
+									planClient.Logger.Tracef("Mapped field %s to %s for resource %s", sourceLookupField.Target, targetField.Name, resource.Address)
+								} else {
+									planClient.Logger.Debugf("Source lookup field %s not found in resource properties for resource %s", sourceLookupField.Target, resource.Address)
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -187,16 +233,8 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		if !foundName {
 			planClient.Logger.Tracef("Resource %s does not have a name property or mapped name property", resource.Address)
 		}
-
-		if val, ok := resource.Properties["location"]; ok {
-			if val != nil {
-				resource.Location = val.(string)
-			}
-		}
-
-		resources = append(resources, &resource)
-		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
 	}
+
 	return resources
 }
 
