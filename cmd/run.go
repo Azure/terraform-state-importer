@@ -79,7 +79,59 @@ Examples:
 			})
 		}
 
-		nameFormats := []terraform.NameFormat{}
+		fieldMappings := []types.FieldMapping{}
+		if viper.InConfig("fieldMappings") {
+			fieldMappingsRaw := viper.Get("fieldMappings").([]any)
+			for _, rawFieldMapping := range fieldMappingsRaw {
+				fieldMappingMap := rawFieldMapping.(map[string]any)
+				mappingEntries := []types.FieldMappingEntry{}
+				for _, rawMappingEntry := range fieldMappingMap["mappings"].([]any) {
+					mappingEntryMap := rawMappingEntry.(map[string]any)
+
+					targetFields := []types.FieldMappingTargetField{}
+					for _, rawTargetField := range mappingEntryMap["targetfields"].([]any) {
+						targetFieldMap := rawTargetField.(map[string]any)
+						targetFields = append(targetFields, types.FieldMappingTargetField{
+							Name: targetFieldMap["name"].(string),
+							From: targetFieldMap["from"].(string),
+						})
+					}
+
+					sourceLookupFields := []types.FieldMappingSourceLookupField{}
+					for _, rawSourceLookupField := range mappingEntryMap["sourcelookupfields"].([]any) {
+						sourceLookupFieldMap := rawSourceLookupField.(map[string]any)
+
+						replacements := []types.FieldMappingSourceLookupFieldReplacement{}
+						for _, rawReplacement := range sourceLookupFieldMap["replacements"].([]any) {
+							replacementMap := rawReplacement.(map[string]any)
+							replacements = append(replacements, types.FieldMappingSourceLookupFieldReplacement{
+								Regex:       replacementMap["regex"].(string),
+								Replacement: replacementMap["replacement"].(string),
+							})
+						}
+
+						sourceLookupFields = append(sourceLookupFields, types.FieldMappingSourceLookupField{
+							Name:         sourceLookupFieldMap["name"].(string),
+							Target:       sourceLookupFieldMap["target"].(string),
+							Replacements: replacements,
+						})
+					}
+
+					mappingEntries = append(mappingEntries, types.FieldMappingEntry{
+						TargetFields:       targetFields,
+						SourceLookupFields: sourceLookupFields,
+					})
+				}
+
+				fieldMappings = append(fieldMappings, types.FieldMapping{
+					Type:     fieldMappingMap["type"].(string),
+					SubType:  fieldMappingMap["subtype"].(string),
+					Mappings: mappingEntries,
+				})
+			}
+		}
+
+		nameFormats := []types.NameFormat{}
 		if viper.InConfig("nameFormats") {
 			nameFormatsRaw := viper.Get("nameFormats").([]any)
 			for _, rawNameFormat := range nameFormatsRaw {
@@ -90,8 +142,9 @@ Examples:
 					nameFormatArguments = append(nameFormatArguments, arg.(string))
 				}
 
-				nameFormats = append(nameFormats, terraform.NameFormat{
+				nameFormats = append(nameFormats, types.NameFormat{
 					Type:                nameFormatMap["type"].(string),
+					SubType:			 nameFormatMap["subtype"].(string),
 					NameFormat:          nameFormatMap["nameformat"].(string),
 					NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
 					NameFormatArguments: nameFormatArguments,

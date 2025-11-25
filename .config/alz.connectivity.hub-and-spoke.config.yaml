@@ -60,6 +60,21 @@ resourceGraphQueries:
       | mv-expand peerings
       | project name = tostring(peerings.name), id = tostring(peerings.id), type = tostring(peerings.type), location, subscriptionId, resourceGroup
 
+# Use this section to specify any custom field mappings between Terraform resources E.g. Looking up a field from a parent resource
+fieldMappings:
+  - type: azapi_resource
+    subType: Microsoft.Network/privateDnsZones/virtualNetworkLinks
+    mappings:
+      - targetFields:
+          - name: private_dns_zone_name
+            from: name
+        sourceLookupFields:
+          - name: address
+            replacements:
+            - regex: "\\.module\\.virtual_network_links\\[.*\\]\\.azapi_resource\\.private_dns_zone_network_link"
+              replacement: ".azapi_resource.private_dns_zone"
+            target: address
+
 # Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
 nameFormats:
   - type: azurerm_log_analytics_solution
@@ -68,7 +83,8 @@ nameFormats:
     nameFormatArguments:
       - solution_name
       - workspace_name
-  - type: azurerm_private_dns_zone_virtual_network_link
+  - type: azapi_resource
+    subType: Microsoft.Network/privateDnsZones/virtualNetworkLinks
     nameFormat: "providers/Microsoft.Network/privateDnsZones/%s/virtualNetworkLinks/%s"
     nameMatchType: IDContains
     nameFormatArguments:

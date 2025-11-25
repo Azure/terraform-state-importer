@@ -27,12 +27,12 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
-	NameFormats                []NameFormat
+	NameFormats                []types.NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -44,13 +44,6 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
 	}
-}
-
-type NameFormat struct {
-	Type                string
-	NameFormat          string
-	NameMatchType       types.NameMatchType
-	NameFormatArguments []string
 }
 
 func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
@@ -167,7 +160,7 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		foundName := false
 
 		for _, nameFormat := range planClient.NameFormats {
-			if nameFormat.Type == resource.Type || nameFormat.Type == resource.SubType {
+			if nameFormat.Type == resource.Type || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
 				nameFormatArguments := []any{}
 				for _, arg := range nameFormat.NameFormatArguments {
 					if val, ok := resource.Properties[arg]; ok {
