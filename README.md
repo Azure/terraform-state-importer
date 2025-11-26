@@ -2,6 +2,21 @@
 
 A comprehensive tool for migrating large Azure workloads to Terraform modules by analyzing existing Azure resources and generating import blocks.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [CLI Reference](#cli-reference)
+- [Configuration Reference](#configuration-reference)
+- [Usage Guide](#usage-guide)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Step-by-Step Workflow](#step-by-step-workflow)
+  - [Issue Resolution Guide](#issue-resolution-guide)
+- [Advanced Configuration](#advanced-configuration)
+- [Troubleshooting](#troubleshooting)
+- [Best Practices](#best-practices)
+
 ## Overview
 
 The Terraform State Importer simplifies the process of importing existing Azure infrastructure into Terraform modules. It automates the complex task of mapping Azure resource IDs to Terraform resources and helps resolve conflicts during the import process.
@@ -11,6 +26,7 @@ The Terraform State Importer simplifies the process of importing existing Azure 
 - **Automated Resource Discovery**: Queries Azure using Resource Graph to find existing resources
 - **Intelligent Resource Mapping**: Maps Azure resources to your Terraform module configuration
 - **Conflict Resolution**: Identifies and helps resolve mapping conflicts through CSV workflows
+- **CSV Import/Export**: Export issues to CSV for resolution and re-import them to continue the workflow
 - **Import Block Generation**: Creates ready-to-use Terraform import blocks
 - **Flexible Configuration**: Supports both subscription and management group scopes
 
@@ -25,8 +41,9 @@ The primary workflow involves:
 1. Discovering Azure resources using configurable Resource Graph queries
 2. Analyzing your Terraform module through `terraform plan`
 3. Mapping resources and identifying conflicts
-4. Resolving conflicts through an interactive CSV workflow
-5. Generating final import blocks for successful imports
+4. Exporting conflicts to CSV for review and resolution
+5. Re-importing resolved issues from CSV
+6. Generating final import blocks for successful imports
 
 ## CLI Reference
 
@@ -141,6 +158,21 @@ nameFormats:                  # Custom name mapping rules
       - "solution_name"
       - "workspace_name"
 
+# Property mapping for cross-resource references
+propertyMappings:             # Custom property mappings between resources
+  - type: "azapi_resource"
+    subType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    mappings:
+      - targetProperties:
+          - name: "private_dns_zone_name"
+            from: "name"
+        sourceLookupProperties:
+          - name: "meta.address"
+            target: "meta.address"
+            replacements:
+              - regex: "\\.module\\.virtual_network_links\\[.*\\]\\.azapi_resource\\.private_dns_zone_network_link"
+                replacement: ".azapi_resource.private_dns_zone"
+
 # Resource cleanup commands
 deleteCommands:               # Commands to run for resource cleanup
   - type: "microsoft.authorization/roleassignments"
@@ -226,7 +258,11 @@ All queries must return these columns:
 
 #### Name Format Mapping
 
-Configure custom naming patterns for resources that need special mapping logic:
+Configure custom naming patterns for resources that need special mapping logic. By default, the tool uses the `name` property from each resource. Use `nameFormats` when:
+- Resource names don't have a standard `name` property
+- Names are composite values (e.g., `solution_name(workspace_name)`)
+- You need to match resources by ID patterns rather than exact names
+- Resources are nested and need hierarchical matching
 
 **Exact Name Matching:**
 ```yaml
@@ -254,6 +290,107 @@ nameFormats:
 - `Exact`: Exact string match
 - `IDEndsWith`: Azure resource ID ends with pattern
 - `IDContains`: Azure resource ID contains pattern
+
+#### Property Mapping
+
+Configure custom property mappings for resources that need to reference properties from other resources in the Terraform plan. This is useful when a resource needs to look up values from parent or related resources.
+
+**Basic Property Mapping:**
+```yaml
+propertyMappings:
+  - type: "azapi_resource"
+    subType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    mappings:
+      - targetProperties:
+          - name: "private_dns_zone_name"
+            from: "name"
+        sourceLookupProperties:
+          - name: "meta.address"
+            target: "meta.address"
+            replacements:
+              - regex: "\\.module\\.virtual_network_links\\[.*\\]\\.azapi_resource\\.private_dns_zone_network_link"
+                replacement: ".azapi_resource.private_dns_zone"
+```
+
+**Configuration Elements:**
+- `type`: The Terraform resource type to apply the mapping to
+- `subType` (optional): Azure resource subtype for more specific matching (e.g., for `azapi_resource`)
+- `mappings`: Array of property mapping rules
+  - `targetProperties`: Properties to populate in the target resource
+    - `name`: Name of the property to set
+    - `from`: Source property name to read the value from
+  - `sourceLookupProperties`: Properties used to locate the source resource
+    - `name`: Property path to read from the source resource
+    - `target`: Property path where the result will be used
+    - `replacements`: Array of regex transformations to find the related resource
+      - `regex`: Regular expression pattern to match in the property value
+      - `replacement`: String to replace the matched pattern with
+
+**Use Cases:**
+- Looking up parent resource properties (e.g., private DNS zone name from a virtual network link)
+- Cross-referencing related resources in hierarchical structures
+- Resolving dependencies between nested resources
+- Mapping resource relationships that aren't explicitly defined in Terraform attributes
+
+#### Meta Properties Reference
+
+The tool automatically adds special `meta.*` properties to each resource during Terraform plan processing. These properties can be referenced in both `propertyMappings` and `nameFormats` configurations to access resource metadata.
+
+**Available Meta Properties:**
+
+| Property | Description | Always Available | Example Value |
+|----------|-------------|------------------|---------------|
+| `meta.type` | The Terraform resource type | Yes | `azurerm_resource_group` |
+| `meta.name` | The resource name from the Terraform configuration | Yes | `this` |
+| `meta.address` | The full Terraform resource address including modules | Yes | `module.network.azurerm_virtual_network.main` |
+| `meta.location` | The Azure region/location of the resource | If resource has `location` property | `eastus`, `uksouth` |
+| `meta.subtype` | The Azure resource type for `azapi_resource` | Only for `azapi_resource` | `Microsoft.Network/privateDnsZones/virtualNetworkLinks` |
+| `meta.apiversion` | The Azure API version for `azapi_resource` | Only for `azapi_resource` | `2020-06-01` |
+
+**Usage in Property Mappings:**
+
+Meta properties are particularly useful for looking up related resources by matching on `meta.address` or other identifying properties:
+
+```yaml
+propertyMappings:
+  - type: "azapi_resource"
+    subType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    mappings:
+      - targetProperties:
+          - name: "private_dns_zone_name"
+            from: "name"
+        sourceLookupProperties:
+          - name: "meta.address"  # Use meta.address to identify the resource
+            target: "meta.address"
+            replacements:
+              - regex: "\\.virtual_network_link$"
+                replacement: ".private_dns_zone"
+```
+
+**Usage in Name Formats:**
+
+Meta properties can be used as arguments in name format strings to construct resource names:
+
+```yaml
+nameFormats:
+  - type: "azapi_resource"
+    subType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    nameFormat: "providers/Microsoft.Network/privateDnsZones/%s/virtualNetworkLinks/%s"
+    nameMatchType: "IDContains"
+    nameFormatArguments:
+      - "private_dns_zone_name"  # Regular property (populated via propertyMapping)
+      - "name"                    # Regular property from resource
+      # Note: meta.location and other meta properties can be used here too
+```
+
+**Common Patterns:**
+
+1. **Matching by Address**: Use `meta.address` with regex replacements to find parent or related resources
+2. **Type-Specific Logic**: Use `meta.type` and `meta.subtype` to apply different rules to different resource types
+3. **Location-Based Matching**: Use `meta.location` when resources need to reference others in the same region
+4. **Hierarchical Resources**: Use `meta.address` to navigate module hierarchies and find related resources
+
+**Note**: All meta properties are read-only and automatically populated by the tool. They cannot be modified through configuration.
 
 #### Delete Commands
 
@@ -361,6 +498,25 @@ cd terraform-state-importer
 go build -o terraform-state-importer .
 ```
 
+### Quick Start
+
+For those already familiar with the tool, here's the basic workflow:
+
+```bash
+# 1. Initial analysis - generates issues.csv
+terraform-state-importer run --config config.yaml --terraformModulePath ./my-module
+
+# 2. Edit issues.csv to resolve conflicts (set Action column)
+
+# 3. Generate import blocks with resolved issues
+terraform-state-importer run --config config.yaml --terraformModulePath ./my-module --issuesCsv issues.csv
+
+# 4. Review and apply imports
+cd ./my-module
+terraform plan
+terraform apply
+```
+
 ### Step-by-Step Workflow
 
 #### Step 1: Prepare Your Environment
@@ -392,9 +548,9 @@ resourceGraphQueries:
       resourcecontainers
       | where type == "microsoft.resources/subscriptions/resourcegroups"
       | project id, name, type, location, subscriptionId, resourceGroup = name
-      
+
   - name: "All Resources"
-    scope: "Subscription" 
+    scope: "Subscription"
     query: |
       resources
       | project name, id, type, location, subscriptionId, resourceGroup
@@ -426,9 +582,14 @@ terraform-state-importer run \
 **What happens:**
 1. Tool queries Azure for resources using your configuration
 2. Runs `terraform plan` on your module
-3. Maps Azure resources to planned Terraform resources  
-4. Generates `issues.csv` in your working directory
+3. Maps Azure resources to planned Terraform resources
+4. Generates output files in your working directory:
+   - `issues.csv`: Mapping conflicts that need resolution
+   - `issues.json`: JSON format of the same issues
+   - `resources.json`: All discovered Terraform plan resources with their properties
 5. Outputs summary of discovered resources and mapping conflicts
+
+**Note**: If all resources map cleanly with no conflicts, `issues.csv` will be empty or not generated, and `imports.tf` will be created automatically. You can skip to Step 5 in this case.
 
 #### Step 3: Review and Resolve Issues
 
@@ -436,13 +597,22 @@ Open the generated `issues.csv` file. You'll see three types of issues:
 
 **Issue Types:**
 - **MultipleResourceIDs**: Multiple Azure resources could map to one Terraform resource
+  - *Common cause*: Resources with similar names across different regions or environments
 - **NoResourceID**: Terraform resource has no matching Azure resource
+  - *Common cause*: New resources in your Terraform code that haven't been deployed yet
 - **UnusedResourceID**: Azure resource has no matching Terraform resource
+  - *Common cause*: Resources exist in Azure but aren't yet defined in your Terraform module
 
 **Resolution Process:**
 1. Open `issues.csv` in Excel or any CSV editor
 2. For each issue, set the `Action` column according to the resolution strategy
-3. Save the file as `resolved-issues.csv`
+3. Save the file (you can save it with the same name or as `resolved-issues.csv`)
+
+**Note:** The tool can read and import CSV files to deserialize issues back into the system, allowing you to:
+- Resume work on previously exported issues
+- Share issue resolution work across team members
+- Version control issue resolutions alongside your infrastructure code
+- Programmatically process and update issues before re-importing
 
 #### Step 4: Generate Import Blocks
 
@@ -457,8 +627,10 @@ terraform-state-importer run \
 
 **What happens:**
 1. Tool validates all issues have resolutions
-2. Generates `import.tf` file with import blocks
-3. Creates any necessary delete commands
+2. Generates `imports.tf` file with Terraform import blocks for resources marked with `Use` action
+3. Generates `destroy.tf` file with commands for resources marked with `Destroy` action (if applicable)
+4. Generates `final.json` with all successfully mapped resources
+5. Outputs summary of imports to be performed
 
 #### Step 5: Execute Import
 
@@ -468,22 +640,34 @@ Apply the generated import blocks:
 cd ./terraform-module
 
 # Review the generated import blocks
-cat import.tf
+cat imports.tf
 
-# Execute imports
-terraform plan  # Should show resources being imported
-terraform apply # Apply the imports
+# Run terraform plan to see what will be imported
+# Resources with import blocks should show as "will be imported"
+terraform plan
+
+# If destroy.tf was generated, review and execute cleanup commands first
+if [ -f destroy.tf ]; then
+  cat destroy.tf
+  # Execute the commands manually if needed
+fi
+
+# Apply the imports
+terraform apply
 ```
 
 ### Issue Resolution Guide
 
 **The CSV file contains these columns:**
-- `Issue ID`: Unique identifier for the issue
-- `Issue Type`: Type of mapping conflict
-- `Terraform Address`: Resource address in your Terraform plan
-- `Mapped Resource ID`: Corresponding Azure resource ID (if found)
-- `Action`: Resolution action you choose (to be filled)
-- `Action ID`: Reference to related issue (used for Replace actions)
+- `Issue ID`: Unique identifier for the issue (e.g., `i-a1b2c3`)
+- `Issue Type`: Type of mapping conflict (`MultipleResourceIDs`, `NoResourceID`, or `UnusedResourceID`)
+- `Resource Address`: Full Terraform resource address (e.g., `module.network.azurerm_resource_group.main`)
+- `Resource Name`: Extracted resource name used for mapping
+- `Resource Type`: Terraform resource type (e.g., `azurerm_resource_group`)
+- `Resource Location`: Azure region (e.g., `eastus`, `uksouth`)
+- `Mapped Resource ID`: Corresponding Azure resource ID if found (e.g., `/subscriptions/.../resourceGroups/rg-name`)
+- `Action`: Resolution action you choose - leave empty for first run, then set to: `Use`, `Ignore`, `Replace`, or `Destroy`
+- `Action ID`: Reference to related issue ID (required only for `Replace` actions to link paired resources)
 
 #### MultipleResourceIDs Issues
 
@@ -534,7 +718,7 @@ Issue ID,Issue Type,Terraform Address,Mapped Resource ID,Action,Action ID
 **Problem**: Azure resource exists but has no matching Terraform resource
 
 **Resolution Options:**
-1. **Leave blank**: Update your Terraform module to include this resource, re-run analysis  
+1. **Leave blank**: Update your Terraform module to include this resource, re-run analysis
 2. **Ignore**: Leave the Azure resource unmanaged by Terraform
 3. **Replace**: Link to a Terraform resource (see Replace workflow above)
 
@@ -579,8 +763,8 @@ resourceGraphQueries:
       | where type == "microsoft.network/virtualnetworks"
       | project id, name, type, location, subscriptionId, resourceGroup, peerings = properties.virtualNetworkPeerings
       | mv-expand peerings
-      | project name = tostring(peerings.name), 
-                id = tostring(peerings.id), 
+      | project name = tostring(peerings.name),
+                id = tostring(peerings.id),
                 type = "microsoft.network/virtualnetworkpeerings",
                 location, subscriptionId, resourceGroup
 ```
@@ -622,7 +806,9 @@ terraform plan
 **Resource Query Failures:**
 - Verify subscription IDs are correct
 - Check Resource Graph query syntax
-- Ensure adequate Azure permissions
+- Ensure adequate Azure permissions (minimum: `Reader` role on subscriptions/management groups)
+- For management group queries, ensure you have access to the management group hierarchy
+- Test your queries in Azure Portal's Resource Graph Explorer first
 
 **Import Block Generation Issues:**
 - Verify all issues in CSV have actions assigned
@@ -639,6 +825,14 @@ terraform-state-importer run \
   --structuredLogs \
   --config config.yaml 2>&1 | tee debug.log
 ```
+
+**Debugging with Output Files:**
+- `resources.json`: Contains all Terraform plan resources with their properties and metadata
+  - Useful for verifying resource names, types, and available properties
+  - Shows all `meta.*` properties that can be used in configurations
+  - Check this file if resources aren't matching as expected
+- `issues.json`: Machine-readable version of issues.csv for automation
+- `final.json`: Successfully mapped resources after issue resolution
 
 ### Best Practices
 

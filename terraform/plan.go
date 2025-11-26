@@ -27,12 +27,13 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
-	NameFormats                []NameFormat
+	PropertyMappings           []types.PropertyMapping
+	NameFormats                []types.NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, nameFormats []NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, propertyMappings []types.PropertyMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -40,17 +41,11 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
 		SkipInitOnly:               skipInitOnly,
+		PropertyMappings:           propertyMappings,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
 	}
-}
-
-type NameFormat struct {
-	Type                string
-	NameFormat          string
-	NameMatchType       types.NameMatchType
-	NameFormatArguments []string
 }
 
 func (planClient *PlanClient) PlanAndGetResources() []*types.PlanResource {
@@ -154,6 +149,9 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		resource.Name = resourceChange["name"].(string)
 
 		resource.Properties = resourceChange["change"].(map[string]any)["after"].(map[string]any)
+		resource.Properties["meta.type"] = resource.Type
+		resource.Properties["meta.name"] = resource.Name
+		resource.Properties["meta.address"] = resource.Address
 		resource.PropertiesCalculated = resourceChange["change"].(map[string]any)["after_unknown"].(map[string]any)
 
 		if resource.Type == "azapi_resource" {
@@ -161,25 +159,92 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 				resourceTypeSplit := strings.Split(subType.(string), "@")
 				resource.SubType = resourceTypeSplit[0]
 				resource.APIVersion = resourceTypeSplit[1]
+				resource.Properties["meta.subtype"] = resource.SubType
+				resource.Properties["meta.apiversion"] = resource.APIVersion
+			}
+		}
+
+		if val, ok := resource.Properties["location"]; ok {
+			if val != nil {
+				resource.Location = val.(string)
+				resource.Properties["meta.location"] = resource.Location
+			}
+		}
+
+		resources = append(resources, &resource)
+		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
+	}
+	return planClient.mapPropertiesAndNames(resources)
+}
+
+func (planClient *PlanClient) mapPropertiesAndNames(resources []*types.PlanResource) []*types.PlanResource {
+	for _, resource := range resources {
+		for _, propertyMapping := range planClient.PropertyMappings {
+			if (propertyMapping.Type == resource.Type && propertyMapping.SubType == "") || (propertyMapping.Type == resource.Type && propertyMapping.SubType == resource.SubType) {
+				for _, mappingEntry := range propertyMapping.Mappings {
+					lookupProperties := map[string]string{}
+
+					for _, sourceLookupProperty := range mappingEntry.SourceLookupProperties {
+						if sourceLookupPropertyValue, ok := resource.Properties[sourceLookupProperty.Name]; ok {
+							lookupValue := sourceLookupPropertyValue.(string)
+
+							for _, replacement := range sourceLookupProperty.Replacements {
+								re := regexp.MustCompile(replacement.Regex)
+								lookupValue = re.ReplaceAllString(lookupValue, replacement.Replacement)
+							}
+
+							lookupProperties[sourceLookupProperty.Target] = lookupValue
+						} else {
+							planClient.Logger.Fatalf("Source lookup property %s not found in resource properties for %s", sourceLookupProperty.Name, resource.Address)
+						}
+					}
+
+					for _, lookupResource := range resources {
+						matchedAll := true
+						for _, sourceLookupProperty := range mappingEntry.SourceLookupProperties {
+							if lookupResourceValue, ok := lookupResource.Properties[sourceLookupProperty.Name]; ok {
+								if lookupProperties[sourceLookupProperty.Name] != lookupResourceValue.(string) {
+									matchedAll = false
+									break
+								}
+							} else {
+								matchedAll = false
+								break
+							}
+						}
+
+						if matchedAll {
+							for _, targetProperty := range mappingEntry.TargetProperties {
+								if targetValue, ok := lookupResource.Properties[targetProperty.From]; ok {
+									resource.Properties[targetProperty.Name] = targetValue
+								} else {
+									planClient.Logger.Fatalf("Mapping property %s not found in lookup resource properties for %s", targetProperty.From, lookupResource.Address)
+								}
+							}
+							break
+						}
+					}
+				}
 			}
 		}
 
 		foundName := false
 
 		for _, nameFormat := range planClient.NameFormats {
-			if nameFormat.Type == resource.Type || nameFormat.Type == resource.SubType {
+			if (nameFormat.Type == resource.Type && nameFormat.SubType == "") || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
 				nameFormatArguments := []any{}
 				for _, arg := range nameFormat.NameFormatArguments {
 					if val, ok := resource.Properties[arg]; ok {
 						nameFormatArguments = append(nameFormatArguments, val.(string))
 					} else {
-						planClient.Logger.Debugf("Name format argument %s not found in resource properties", arg)
+						planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
 					}
 				}
 
 				resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
 				resource.ResourceNameMatchType = nameFormat.NameMatchType
 				foundName = true
+				break
 			}
 		}
 
@@ -194,16 +259,8 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		if !foundName {
 			planClient.Logger.Tracef("Resource %s does not have a name property or mapped name property", resource.Address)
 		}
-
-		if val, ok := resource.Properties["location"]; ok {
-			if val != nil {
-				resource.Location = val.(string)
-			}
-		}
-
-		resources = append(resources, &resource)
-		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
 	}
+
 	return resources
 }
 

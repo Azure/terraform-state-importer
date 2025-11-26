@@ -79,7 +79,64 @@ Examples:
 			})
 		}
 
-		nameFormats := []terraform.NameFormat{}
+		propertyMappings := []types.PropertyMapping{}
+		if viper.InConfig("propertyMappings") {
+			propertyMappingsRaw := viper.Get("propertyMappings").([]any)
+			for _, rawPropertyMapping := range propertyMappingsRaw {
+				propertyMappingMap := rawPropertyMapping.(map[string]any)
+				mappingEntries := []types.PropertyMappingEntry{}
+				for _, rawMappingEntry := range propertyMappingMap["mappings"].([]any) {
+					mappingEntryMap := rawMappingEntry.(map[string]any)
+
+					targetProperties := []types.PropertyMappingTargetProperty{}
+					for _, rawTargetProperty := range mappingEntryMap["targetproperties"].([]any) {
+						targetPropertyMap := rawTargetProperty.(map[string]any)
+						targetProperties = append(targetProperties, types.PropertyMappingTargetProperty{
+							Name: targetPropertyMap["name"].(string),
+							From: targetPropertyMap["from"].(string),
+						})
+					}
+
+					sourceLookupProperties := []types.PropertyMappingSourceLookupProperty{}
+					for _, rawSourceLookupProperty := range mappingEntryMap["sourcelookupproperties"].([]any) {
+						sourceLookupPropertyMap := rawSourceLookupProperty.(map[string]any)
+
+						replacements := []types.PropertyMappingSourceLookupPropertyReplacement{}
+						for _, rawReplacement := range sourceLookupPropertyMap["replacements"].([]any) {
+							replacementMap := rawReplacement.(map[string]any)
+							replacements = append(replacements, types.PropertyMappingSourceLookupPropertyReplacement{
+								Regex:       replacementMap["regex"].(string),
+								Replacement: replacementMap["replacement"].(string),
+							})
+						}
+
+						sourceLookupProperties = append(sourceLookupProperties, types.PropertyMappingSourceLookupProperty{
+							Name:         sourceLookupPropertyMap["name"].(string),
+							Target:       sourceLookupPropertyMap["target"].(string),
+							Replacements: replacements,
+						})
+					}
+
+					mappingEntries = append(mappingEntries, types.PropertyMappingEntry{
+						TargetProperties:       targetProperties,
+						SourceLookupProperties: sourceLookupProperties,
+					})
+				}
+
+				subType := ""
+				if _, ok := propertyMappingMap["subtype"]; ok {
+					subType = propertyMappingMap["subtype"].(string)
+				}
+
+				propertyMappings = append(propertyMappings, types.PropertyMapping{
+					Type:     propertyMappingMap["type"].(string),
+					SubType:  subType,
+					Mappings: mappingEntries,
+				})
+			}
+		}
+
+		nameFormats := []types.NameFormat{}
 		if viper.InConfig("nameFormats") {
 			nameFormatsRaw := viper.Get("nameFormats").([]any)
 			for _, rawNameFormat := range nameFormatsRaw {
@@ -90,8 +147,13 @@ Examples:
 					nameFormatArguments = append(nameFormatArguments, arg.(string))
 				}
 
-				nameFormats = append(nameFormats, terraform.NameFormat{
+				subType := ""
+				if _, ok := nameFormatMap["subtype"]; ok {
+					subType = nameFormatMap["subtype"].(string)
+				}
+				nameFormats = append(nameFormats, types.NameFormat{
 					Type:                nameFormatMap["type"].(string),
+					SubType:             subType,
 					NameFormat:          nameFormatMap["nameformat"].(string),
 					NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
 					NameFormatArguments: nameFormatArguments,
@@ -131,6 +193,7 @@ Examples:
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
+			propertyMappings,
 			nameFormats,
 			jsonClient,
 			log,

@@ -65,7 +65,7 @@ func (m *mockIssueCsvClient) Import() (*map[string]types.Issue, error) {
 }
 
 type mockHclClient struct {
-	Called bool
+	Called           bool
 	CleanFilesCalled bool
 }
 
@@ -492,7 +492,7 @@ func Test_mapResourcesFromGraphToPlan_ResolvedIssue_MultipleResourceIDs_Use(t *t
 	issueID := getIdentityHash("addr1")
 	resolvedIssues := map[string]types.Issue{
 		issueID: {
-			IssueID: issueID,
+			IssueID:           issueID,
 			MappedResourceIDs: []string{"id2"},
 		},
 	}

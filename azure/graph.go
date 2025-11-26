@@ -33,6 +33,9 @@ func NewResourceGraphClient(managementGroupIDs []string, subscriptionIDs []strin
 	}
 	subscriptionIDsPtr := make([]*string, len(subscriptionIDs))
 	for i, id := range subscriptionIDs {
+		if id == "" || id == "00000000-0000-0000-0000-000000000000" {
+			logger.Fatalf("Subscription ID is not valid, please update your config file with valid subscription IDs: %s", id)
+		}
 		subscriptionIDsPtr[i] = &id
 	}
 

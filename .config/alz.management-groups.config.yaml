@@ -85,7 +85,7 @@ resourceGraphQueries:
       ) on principalId
       | project id, name, type, location, subscriptionId, resourceGroup
 
-# Use this section to specify any custom name formats for mapping where a standard `name` field does not exist or is not unique
+# Use this section to specify any custom name formats for mapping where a standard `name` property does not exist or is not unique
 nameFormats:
   - type: Microsoft.Authorization/policyAssignments
     nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
