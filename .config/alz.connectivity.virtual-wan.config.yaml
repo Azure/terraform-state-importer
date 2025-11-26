@@ -85,7 +85,8 @@ nameFormats:
     nameFormatArguments:
       - solution_name
       - workspace_name
-  - type: azurerm_private_dns_zone_virtual_network_link
+  - type: azapi_resource
+    subType: Microsoft.Network/privateDnsZones/virtualNetworkLinks
     nameFormat: "providers/Microsoft.Network/privateDnsZones/%s/virtualNetworkLinks/%s"
     nameMatchType: IDContains
     nameFormatArguments:
