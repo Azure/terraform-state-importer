@@ -27,13 +27,13 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
-	FieldMappings 			   []types.FieldMapping
+	PropertyMappings           []types.PropertyMapping
 	NameFormats                []types.NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, fieldMappings []types.FieldMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, propertyMappings []types.PropertyMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -41,7 +41,7 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
 		SkipInitOnly:               skipInitOnly,
-		FieldMappings: 			    fieldMappings,
+		PropertyMappings:           propertyMappings,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
 		Logger:                     logger,
@@ -174,29 +174,54 @@ func (planClient *PlanClient) readResourcesFromPlan(plan map[string]any) []*type
 		resources = append(resources, &resource)
 		planClient.Logger.Tracef("Adding Resource: %s", resource.Address)
 	}
-	return planClient.mapNames(resources)
+	return planClient.mapPropertiesAndNames(resources)
 }
 
-func (planClient *PlanClient) mapNames(resources []*types.PlanResource) []*types.PlanResource {
+func (planClient *PlanClient) mapPropertiesAndNames(resources []*types.PlanResource) []*types.PlanResource {
 	for _, resource := range resources {
-		for _, fieldMapping := range planClient.FieldMappings {
-			if fieldMapping.Type == resource.Type || (fieldMapping.Type == resource.Type && fieldMapping.SubType == resource.SubType) {
-				for _, mappingEntry := range fieldMapping.Mappings {
-					for _, targetField := range mappingEntry.TargetFields {
-						for _, sourceLookupField := range mappingEntry.SourceLookupFields {
-							for _, lookupResource := range resources {
-								if val, ok := lookupResource.Properties[sourceLookupField.Target]; ok {
-									lookupValue := val.(string)
-									for _, replacement := range sourceLookupField.Replacements {
-										re := regexp.MustCompile(replacement.Regex)
-										lookupValue = re.ReplaceAllString(lookupValue, replacement.Replacement)
-									}
-									resource.Properties[targetField.Name] = lookupValue
-									planClient.Logger.Tracef("Mapped field %s to %s for resource %s", sourceLookupField.Target, targetField.Name, resource.Address)
+		for _, propertyMapping := range planClient.PropertyMappings {
+			if (propertyMapping.Type == resource.Type && propertyMapping.SubType == "") || (propertyMapping.Type == resource.Type && propertyMapping.SubType == resource.SubType) {
+				for _, mappingEntry := range propertyMapping.Mappings {
+					lookupProperties := map[string]string{}
+
+					for _, sourceLookupProperty := range mappingEntry.SourceLookupProperties {
+						if sourceLookupPropertyValue, ok := resource.Properties[sourceLookupProperty.Name]; ok {
+							lookupValue := sourceLookupPropertyValue.(string)
+
+							for _, replacement := range sourceLookupProperty.Replacements {
+								re := regexp.MustCompile(replacement.Regex)
+								lookupValue = re.ReplaceAllString(lookupValue, replacement.Replacement)
+							}
+
+							lookupProperties[sourceLookupProperty.Target] = lookupValue
+						} else {
+							planClient.Logger.Fatalf("Source lookup property %s not found in resource properties for %s", sourceLookupProperty.Name, resource.Address)
+						}
+					}
+
+					for _, lookupResource := range resources {
+						matchedAll := true
+						for _, sourceLookupProperty := range mappingEntry.SourceLookupProperties {
+							if lookupResourceValue, ok := lookupResource.Properties[sourceLookupProperty.Name]; ok {
+								if lookupProperties[sourceLookupProperty.Name] != lookupResourceValue.(string) {
+									matchedAll = false
+									break
+								}
+							} else {
+								matchedAll = false
+								break
+							}
+						}
+
+						if matchedAll {
+							for _, targetProperty := range mappingEntry.TargetProperties {
+								if targetValue, ok := lookupResource.Properties[targetProperty.From]; ok {
+									resource.Properties[targetProperty.Name] = targetValue
 								} else {
-									planClient.Logger.Debugf("Source lookup field %s not found in resource properties for resource %s", sourceLookupField.Target, resource.Address)
+									planClient.Logger.Fatalf("Mapping property %s not found in lookup resource properties for %s", targetProperty.From, lookupResource.Address)
 								}
 							}
+							break
 						}
 					}
 				}
@@ -206,19 +231,20 @@ func (planClient *PlanClient) mapNames(resources []*types.PlanResource) []*types
 		foundName := false
 
 		for _, nameFormat := range planClient.NameFormats {
-			if nameFormat.Type == resource.Type || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
+			if (nameFormat.Type == resource.Type && nameFormat.SubType == "") || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
 				nameFormatArguments := []any{}
 				for _, arg := range nameFormat.NameFormatArguments {
 					if val, ok := resource.Properties[arg]; ok {
 						nameFormatArguments = append(nameFormatArguments, val.(string))
 					} else {
-						planClient.Logger.Debugf("Name format argument %s not found in resource properties", arg)
+						planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
 					}
 				}
 
 				resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
 				resource.ResourceNameMatchType = nameFormat.NameMatchType
 				foundName = true
+				break
 			}
 		}
 

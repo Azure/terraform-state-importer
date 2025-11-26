@@ -79,53 +79,58 @@ Examples:
 			})
 		}
 
-		fieldMappings := []types.FieldMapping{}
-		if viper.InConfig("fieldMappings") {
-			fieldMappingsRaw := viper.Get("fieldMappings").([]any)
-			for _, rawFieldMapping := range fieldMappingsRaw {
-				fieldMappingMap := rawFieldMapping.(map[string]any)
-				mappingEntries := []types.FieldMappingEntry{}
-				for _, rawMappingEntry := range fieldMappingMap["mappings"].([]any) {
+		propertyMappings := []types.PropertyMapping{}
+		if viper.InConfig("propertyMappings") {
+			propertyMappingsRaw := viper.Get("propertyMappings").([]any)
+			for _, rawPropertyMapping := range propertyMappingsRaw {
+				propertyMappingMap := rawPropertyMapping.(map[string]any)
+				mappingEntries := []types.PropertyMappingEntry{}
+				for _, rawMappingEntry := range propertyMappingMap["mappings"].([]any) {
 					mappingEntryMap := rawMappingEntry.(map[string]any)
 
-					targetFields := []types.FieldMappingTargetField{}
-					for _, rawTargetField := range mappingEntryMap["targetfields"].([]any) {
-						targetFieldMap := rawTargetField.(map[string]any)
-						targetFields = append(targetFields, types.FieldMappingTargetField{
-							Name: targetFieldMap["name"].(string),
-							From: targetFieldMap["from"].(string),
+					targetProperties := []types.PropertyMappingTargetProperty{}
+					for _, rawTargetProperty := range mappingEntryMap["targetproperties"].([]any) {
+						targetPropertyMap := rawTargetProperty.(map[string]any)
+						targetProperties = append(targetProperties, types.PropertyMappingTargetProperty{
+							Name: targetPropertyMap["name"].(string),
+							From: targetPropertyMap["from"].(string),
 						})
 					}
 
-					sourceLookupFields := []types.FieldMappingSourceLookupField{}
-					for _, rawSourceLookupField := range mappingEntryMap["sourcelookupfields"].([]any) {
-						sourceLookupFieldMap := rawSourceLookupField.(map[string]any)
+					sourceLookupProperties := []types.PropertyMappingSourceLookupProperty{}
+					for _, rawSourceLookupProperty := range mappingEntryMap["sourcelookupproperties"].([]any) {
+						sourceLookupPropertyMap := rawSourceLookupProperty.(map[string]any)
 
-						replacements := []types.FieldMappingSourceLookupFieldReplacement{}
-						for _, rawReplacement := range sourceLookupFieldMap["replacements"].([]any) {
+						replacements := []types.PropertyMappingSourceLookupPropertyReplacement{}
+						for _, rawReplacement := range sourceLookupPropertyMap["replacements"].([]any) {
 							replacementMap := rawReplacement.(map[string]any)
-							replacements = append(replacements, types.FieldMappingSourceLookupFieldReplacement{
+							replacements = append(replacements, types.PropertyMappingSourceLookupPropertyReplacement{
 								Regex:       replacementMap["regex"].(string),
 								Replacement: replacementMap["replacement"].(string),
 							})
 						}
 
-						sourceLookupFields = append(sourceLookupFields, types.FieldMappingSourceLookupField{
-							Name:         sourceLookupFieldMap["name"].(string),
-							Target:       sourceLookupFieldMap["target"].(string),
+						sourceLookupProperties = append(sourceLookupProperties, types.PropertyMappingSourceLookupProperty{
+							Name:         sourceLookupPropertyMap["name"].(string),
+							Target:       sourceLookupPropertyMap["target"].(string),
 							Replacements: replacements,
 						})
 					}
 
-					mappingEntries = append(mappingEntries, types.FieldMappingEntry{
-						TargetFields:       targetFields,
-						SourceLookupFields: sourceLookupFields,
+					mappingEntries = append(mappingEntries, types.PropertyMappingEntry{
+						TargetProperties:       targetProperties,
+						SourceLookupProperties: sourceLookupProperties,
 					})
 				}
 
-				fieldMappings = append(fieldMappings, types.FieldMapping{
-					Type:     fieldMappingMap["type"].(string),
-					SubType:  fieldMappingMap["subtype"].(string),
+				subType := ""
+				if _, ok := propertyMappingMap["subtype"]; ok {
+					subType = propertyMappingMap["subtype"].(string)
+				}
+
+				propertyMappings = append(propertyMappings, types.PropertyMapping{
+					Type:     propertyMappingMap["type"].(string),
+					SubType:  subType,
 					Mappings: mappingEntries,
 				})
 			}
@@ -142,9 +147,13 @@ Examples:
 					nameFormatArguments = append(nameFormatArguments, arg.(string))
 				}
 
+				subType := ""
+				if _, ok := nameFormatMap["subtype"]; ok {
+					subType = nameFormatMap["subtype"].(string)
+				}
 				nameFormats = append(nameFormats, types.NameFormat{
 					Type:                nameFormatMap["type"].(string),
-					SubType:			 nameFormatMap["subtype"].(string),
+					SubType:             subType,
 					NameFormat:          nameFormatMap["nameformat"].(string),
 					NameMatchType:       types.NameMatchType(nameFormatMap["namematchtype"].(string)),
 					NameFormatArguments: nameFormatArguments,
@@ -184,7 +193,7 @@ Examples:
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
-			fieldMappings,
+			propertyMappings,
 			nameFormats,
 			jsonClient,
 			log,
