@@ -120,9 +120,66 @@ terraform-state-importer run \
 
 The tool uses a YAML configuration file to define Azure resource queries, filtering rules, and mapping behaviors.
 
+### Pre-built Configuration Files
+
+The repository includes ready-to-use configuration files for common Azure Landing Zone scenarios in the `.config/` directory:
+
+| Configuration File | Purpose | Scope | Description |
+|--------------------|---------|-------|-------------|
+| `alz.management-groups.config.yaml` | Management Groups | Management Group | Import Azure Landing Zone management group hierarchy, policy definitions, policy set definitions, policy assignments, custom role definitions, and role assignments |
+| `alz.connectivity.hub-and-spoke.config.yaml` | Hub and Spoke Networking | Subscription | Import Azure Landing Zone connectivity resources using hub-and-spoke topology including VNets, subnets, NSGs, route tables, VPN/ExpressRoute gateways, private DNS zones, and DDoS protection |
+| `alz.connectivity.virtual-wan.config.yaml` | Virtual WAN Networking | Subscription | Import Azure Landing Zone connectivity resources using Virtual WAN topology including virtual WANs, virtual hubs, VPN/ExpressRoute gateways, firewall policies, and private DNS zones |
+
+**Usage:**
+```bash
+# Using pre-built configuration for management groups
+terraform-state-importer run \
+  --config .config/alz.management-groups.config.yaml \
+  --terraformModulePath ./my-alz-module
+
+# Using pre-built configuration for hub-and-spoke connectivity
+terraform-state-importer run \
+  --config .config/alz.connectivity.hub-and-spoke.config.yaml \
+  --terraformModulePath ./my-connectivity-module
+```
+
+**Customizing Pre-built Configs:**
+1. Copy the appropriate config file to your working directory
+2. Update subscription IDs or management group IDs
+3. Modify filters and queries as needed for your environment
+4. Adjust the `cloud` setting if using sovereign clouds
+
+### Supported Azure Clouds
+
+The tool supports all Azure cloud environments. Set the `cloud` property in your configuration file:
+
+```yaml
+# Target Cloud for the migration
+cloud: "AzurePublic"  # Options: AzurePublic, AzureUSGovernment, AzureChina
+```
+
+**Available Cloud Values:**
+- `AzurePublic` - Global Azure (default)
+- `AzureUSGovernment` - Azure US Government
+- `AzureChina` - Azure China (Mooncake)
+
+**Note**: Ensure your Azure CLI is authenticated to the correct cloud environment before running the tool:
+```bash
+# For Azure US Government
+az cloud set --name AzureUSGovernment
+az login
+
+# For Azure China
+az cloud set --name AzureChinaCloud
+az login
+```
+
 ### Configuration File Structure
 
 ```yaml
+# Target cloud environment
+cloud: "AzurePublic"          # Options: AzurePublic, AzureGovernment, AzureChina
+
 # Azure scope configuration (choose one)
 subscriptionIDs:              # Target specific subscriptions
   - "subscription-id-1"
@@ -180,6 +237,16 @@ deleteCommands:               # Commands to run for resource cleanup
 ```
 
 ### Core Configuration Sections
+
+#### Cloud Environment
+
+Specify the target Azure cloud environment (optional, defaults to `AzurePublic`):
+
+```yaml
+cloud: "AzurePublic"  # Options: AzurePublic, AzureGovernment, AzureChina
+```
+
+This setting ensures the tool connects to the correct Azure cloud endpoints. Make sure your Azure CLI is authenticated to the matching cloud environment.
 
 #### Azure Scope Configuration
 
