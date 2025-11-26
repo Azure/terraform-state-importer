@@ -173,7 +173,13 @@ Examples:
 			}
 		}
 
+		cloud := viper.GetString("cloud")
+		if cloud == "" {
+			cloud = "AzurePublic"
+		}
+
 		resourceGraphClient := azure.NewResourceGraphClient(
+			cloud,
 			viper.GetStringSlice("managementGroupIDs"),
 			viper.GetStringSlice("subscriptionIDs"),
 			viper.GetStringSlice("ignoreResourceIDPatterns"),

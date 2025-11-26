@@ -1,3 +1,6 @@
+# Target Cloud for the migration
+cloud: "AzurePublic"
+
 # Use this setting to specify the Azure Management Group IDs to target for the migration
 managementGroupIDs:
   # ALZ Root Management Group ID

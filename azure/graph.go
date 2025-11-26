@@ -8,6 +8,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
@@ -18,6 +21,7 @@ type IResourceGraphClient interface {
 }
 
 type ResourceGraphClient struct {
+	Cloud                    cloud.Configuration
 	ManagementGroupIDs       []*string
 	SubscriptionIDs          []*string
 	IgnoreResourceIDPatterns []string
@@ -25,7 +29,7 @@ type ResourceGraphClient struct {
 	Logger                   *logrus.Logger
 }
 
-func NewResourceGraphClient(managementGroupIDs []string, subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []types.ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
+func NewResourceGraphClient(cloudConfiguration string, managementGroupIDs []string, subscriptionIDs []string, ignoreResourceIDPatterns []string, resourceGraphQueries []types.ResourceGraphQuery, logger *logrus.Logger) *ResourceGraphClient {
 	// Convert string slices to pointer slices
 	managementGroupIDsPtr := make([]*string, len(managementGroupIDs))
 	for i, id := range managementGroupIDs {
@@ -39,7 +43,22 @@ func NewResourceGraphClient(managementGroupIDs []string, subscriptionIDs []strin
 		subscriptionIDsPtr[i] = &id
 	}
 
+	var cloudConfigurationFinal cloud.Configuration
+	switch cloudConfiguration {
+	case "AzurePublic":
+		cloudConfigurationFinal = cloud.AzurePublic
+	case "AzureUSGovernment":
+		cloudConfigurationFinal = cloud.AzureGovernment
+	case "AzureGovernment":
+		cloudConfigurationFinal = cloud.AzureGovernment
+	case "AzureChina":
+		cloudConfigurationFinal = cloud.AzureChina
+	default:
+		logger.Fatalf("Unsupported cloud specified: %s", cloudConfiguration)
+	}
+
 	return &ResourceGraphClient{
+		Cloud:                    cloudConfigurationFinal,
 		ManagementGroupIDs:       managementGroupIDsPtr,
 		SubscriptionIDs:          subscriptionIDsPtr,
 		IgnoreResourceIDPatterns: ignoreResourceIDPatterns,
@@ -113,7 +132,10 @@ func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQuerySco
 		graph.Logger.Infof("Running Resource Graph Query: %s", query.Name)
 		graph.Logger.Tracef("Query: %s", query.Query)
 
-		resourcesClient, err := armresourcegraph.NewClient(cred, nil)
+		opts := azcore.ClientOptions{Cloud: cloud.AzurePublic}
+		resourcesClient, err := armresourcegraph.NewClient(cred, &arm.ClientOptions{
+			ClientOptions: opts,
+		})
 		if err != nil {
 			graph.Logger.Fatal(err)
 		}
