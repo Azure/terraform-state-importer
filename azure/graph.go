@@ -73,7 +73,7 @@ func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error)
 		graph.Logger.Fatal(err)
 	}
 
-	resources := []*types.GraphResource{}
+	resourceMap := make(map[string]*types.GraphResource)
 
 	if len(graph.SubscriptionIDs) > 0 {
 		emptyGuid := "00000000-0000-0000-0000-000000000000"
@@ -85,22 +85,27 @@ func (graph *ResourceGraphClient) GetResources() ([]*types.GraphResource, error)
 			}
 		}
 		graph.Logger.Info("Running graph queries for Subscriptions")
-		resources = graph.getResourcesBySubscriptionID(cred, resources)
+		graph.getResourcesBySubscriptionID(cred, resourceMap)
 	}
 
 	if len(graph.ManagementGroupIDs) > 0 {
 		graph.Logger.Info("Running graph queries for Management Groups")
-		resources = graph.getResourcesByManagementGroupID(cred, resources)
+		graph.getResourcesByManagementGroupID(cred, resourceMap)
 	}
 
 	if len(graph.SubscriptionIDs) == 0 && len(graph.ManagementGroupIDs) == 0 {
 		graph.Logger.Fatal("Subscription IDs or Management Group IDs must be provided")
 	}
 
+	resources := make([]*types.GraphResource, 0, len(resourceMap))
+	for _, resource := range resourceMap {
+		resources = append(resources, resource)
+	}
+
 	return resources, nil
 }
 
-func (graph *ResourceGraphClient) getResourcesByManagementGroupID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+func (graph *ResourceGraphClient) getResourcesByManagementGroupID(cred *azidentity.DefaultAzureCredential, resourceMap map[string]*types.GraphResource) {
 	queryRequest := armresourcegraph.QueryRequest{
 		Options: &armresourcegraph.QueryRequestOptions{
 			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
@@ -108,10 +113,10 @@ func (graph *ResourceGraphClient) getResourcesByManagementGroupID(cred *azidenti
 		ManagementGroups: graph.ManagementGroupIDs,
 	}
 
-	return graph.getResources(types.ResourceGraphQueryScopeManagementGroup, queryRequest, cred, resources)
+	graph.getResources(types.ResourceGraphQueryScopeManagementGroup, queryRequest, cred, resourceMap)
 }
 
-func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.DefaultAzureCredential, resourceMap map[string]*types.GraphResource) {
 	queryRequest := armresourcegraph.QueryRequest{
 		Options: &armresourcegraph.QueryRequestOptions{
 			AuthorizationScopeFilter: to.Ptr(armresourcegraph.AuthorizationScopeFilterAtScopeAndBelow),
@@ -119,10 +124,10 @@ func (graph *ResourceGraphClient) getResourcesBySubscriptionID(cred *azidentity.
 		Subscriptions: graph.SubscriptionIDs,
 	}
 
-	return graph.getResources(types.ResourceGraphQueryScopeSubscription, queryRequest, cred, resources)
+	graph.getResources(types.ResourceGraphQueryScopeSubscription, queryRequest, cred, resourceMap)
 }
 
-func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQueryScope, queryRequest armresourcegraph.QueryRequest, cred *azidentity.DefaultAzureCredential, resources []*types.GraphResource) []*types.GraphResource {
+func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQueryScope, queryRequest armresourcegraph.QueryRequest, cred *azidentity.DefaultAzureCredential, resourceMap map[string]*types.GraphResource) {
 	for _, query := range graph.ResourceGraphQueries {
 		if query.Scope != scope {
 			graph.Logger.Debugf("Skipping query %s for scope %s", query.Name, scope)
@@ -172,6 +177,11 @@ func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQuerySco
 				graph.Logger.Tracef("Ignoring Resource ID: %s", resourceID)
 				continue
 			}
+			// Skip if the resource ID is already in the map (de-duplication)
+			if _, exists := resourceMap[resourceID]; exists {
+				graph.Logger.Tracef("Skipping duplicate Resource ID: %s", resourceID)
+				continue
+			}
 			graph.Logger.Tracef("Adding Resource ID: %s", resourceID)
 			resourceResult := types.GraphResource{
 				ID:       resourceID,
@@ -179,9 +189,7 @@ func (graph *ResourceGraphClient) getResources(scope types.ResourceGraphQuerySco
 				Name:     resource["name"].(string),
 				Location: resource["location"].(string),
 			}
-			resources = append(resources, &resourceResult)
+			resourceMap[resourceID] = &resourceResult
 		}
 	}
-
-	return resources
 }
