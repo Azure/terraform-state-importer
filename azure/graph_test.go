@@ -8,6 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	testResourceID1   = "/subscriptions/123/rg/providers/dns/zone1"
+	testResourceID2   = "/subscriptions/123/rg/providers/dns/zone2"
+	testResourceName1 = "zone1"
+	testResourceName2 = "zone2"
+	testResourceType  = "microsoft.network/privatednszones"
+	testLocation      = "global"
+)
+
 func TestDeduplicateGraphResources(t *testing.T) {
 	logger := logrus.New()
 
@@ -17,10 +26,10 @@ func TestDeduplicateGraphResources(t *testing.T) {
 
 	// Simulate adding the same resource twice (as would happen with duplicate query results)
 	resources := []types.GraphResource{
-		{ID: "/subscriptions/123/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io", Name: "privatelink.azurecr.io", Type: "microsoft.network/privatednszones", Location: "global"},
-		{ID: "/subscriptions/123/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io", Name: "privatelink.azurecr.io", Type: "microsoft.network/privatednszones", Location: "global"}, // duplicate
-		{ID: "/subscriptions/123/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.cognitiveservices.azure.com", Name: "privatelink.cognitiveservices.azure.com", Type: "microsoft.network/privatednszones", Location: "global"},
-		{ID: "/subscriptions/123/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.cognitiveservices.azure.com", Name: "privatelink.cognitiveservices.azure.com", Type: "microsoft.network/privatednszones", Location: "global"}, // duplicate
+		{ID: testResourceID1, Name: testResourceName1, Type: testResourceType, Location: testLocation},
+		{ID: testResourceID1, Name: testResourceName1, Type: testResourceType, Location: testLocation}, // duplicate
+		{ID: testResourceID2, Name: testResourceName2, Type: testResourceType, Location: testLocation},
+		{ID: testResourceID2, Name: testResourceName2, Type: testResourceType, Location: testLocation}, // duplicate
 	}
 
 	for _, res := range resources {
@@ -47,18 +56,18 @@ func TestDeduplicateGraphResources(t *testing.T) {
 	assert.Len(t, result, 2)
 
 	// Verify both unique resources are present
-	foundACR := false
-	foundCogSvcs := false
+	foundResource1 := false
+	foundResource2 := false
 	for _, res := range result {
-		if res.Name == "privatelink.azurecr.io" {
-			foundACR = true
+		if res.Name == testResourceName1 {
+			foundResource1 = true
 		}
-		if res.Name == "privatelink.cognitiveservices.azure.com" {
-			foundCogSvcs = true
+		if res.Name == testResourceName2 {
+			foundResource2 = true
 		}
 	}
-	assert.True(t, foundACR, "Expected to find privatelink.azurecr.io")
-	assert.True(t, foundCogSvcs, "Expected to find privatelink.cognitiveservices.azure.com")
+	assert.True(t, foundResource1, "Expected to find "+testResourceName1)
+	assert.True(t, foundResource2, "Expected to find "+testResourceName2)
 }
 
 func TestDeduplicateEmptyResources(t *testing.T) {
@@ -79,10 +88,10 @@ func TestDeduplicateSingleResource(t *testing.T) {
 
 	// Add a single resource
 	resource := types.GraphResource{
-		ID:       "/subscriptions/123/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io",
-		Name:     "privatelink.azurecr.io",
-		Type:     "microsoft.network/privatednszones",
-		Location: "global",
+		ID:       testResourceID1,
+		Name:     testResourceName1,
+		Type:     testResourceType,
+		Location: testLocation,
 	}
 
 	resourceMap[resource.ID] = &resource
@@ -95,5 +104,5 @@ func TestDeduplicateSingleResource(t *testing.T) {
 
 	// Verify single resource is returned
 	assert.Len(t, result, 1)
-	assert.Equal(t, "privatelink.azurecr.io", result[0].Name)
+	assert.Equal(t, testResourceName1, result[0].Name)
 }
