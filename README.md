@@ -330,6 +330,7 @@ Configure custom naming patterns for resources that need special mapping logic. 
 - Names are composite values (e.g., `solution_name(workspace_name)`)
 - You need to match resources by ID patterns rather than exact names
 - Resources are nested and need hierarchical matching
+- Working with `azapi_resource` types that need subtype-specific matching
 
 **Exact Name Matching:**
 ```yaml
@@ -353,10 +354,46 @@ nameFormats:
       - "name"
 ```
 
+**SubType-Aware Matching (for azapi_resource):**
+
+For `azapi_resource` types, you can specify matching rules based on the Azure resource SubType. The tool applies name formats with deterministic precedence:
+
+1. **Exact SubType match**: `nameFormat.Type == resource.SubType`
+2. **Type+SubType match**: `nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType`
+3. **Type-only match**: `nameFormat.Type == resource.Type` (fallback)
+
+```yaml
+nameFormats:
+  # Most specific: matches by SubType directly
+  - type: "Microsoft.Authorization/policyAssignments"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
+    nameMatchType: "IDExact"  # Recommended for policy artifacts
+    nameFormatArguments:
+      - "parent_id"
+      - "name"
+  
+  # Alternative: explicit Type+SubType specification
+  - type: "azapi_resource"
+    subType: "Microsoft.Authorization/policyDefinitions"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions/%s"
+    nameMatchType: "IDExact"
+    nameFormatArguments:
+      - "parent_id"
+      - "name"
+```
+
+**Type Prefiltering:**
+
+When a resource has a SubType (e.g., `Microsoft.Authorization/policyAssignments`), the tool automatically filters Azure Resource Graph results to only consider resources with matching Azure types before applying name/ID matching. This eliminates cross-type false matches, particularly important for:
+- Policy assignments vs policy definitions
+- Policy definitions vs policy set definitions
+- Any resources with similar names but different types
+
 **Name Match Types:**
-- `Exact`: Exact string match
-- `IDEndsWith`: Azure resource ID ends with pattern
-- `IDContains`: Azure resource ID contains pattern
+- `Exact`: Exact string match on resource name
+- `IDEndsWith`: Azure resource ID ends with the constructed pattern
+- `IDContains`: Azure resource ID contains the constructed pattern
+- `IDExact`: Exact match on full Azure resource ID (recommended for policy artifacts)
 
 #### Property Mapping
 
@@ -458,6 +495,49 @@ nameFormats:
 4. **Hierarchical Resources**: Use `meta.address` to navigate module hierarchies and find related resources
 
 **Note**: All meta properties are read-only and automatically populated by the tool. They cannot be modified through configuration.
+
+#### Policy Artifacts Configuration
+
+Azure policy resources (assignments, definitions, set definitions) commonly share names across scopes and require precise matching. The tool provides specialized support for these resources:
+
+**Recommended Configuration for Policy Assignments:**
+```yaml
+nameFormats:
+  - type: "Microsoft.Authorization/policyAssignments"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
+    nameMatchType: "IDExact"  # Prevents cross-scope matches
+    nameFormatArguments:
+      - "parent_id"  # Management group or subscription scope
+      - "name"       # Assignment name
+```
+
+**Recommended Configuration for Policy Definitions:**
+```yaml
+nameFormats:
+  - type: "Microsoft.Authorization/policyDefinitions"
+    nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions/%s"
+    nameMatchType: "IDExact"
+    nameFormatArguments:
+      - "parent_id"
+      - "name"
+```
+
+**Recommended Configuration for Policy Set Definitions:**
+```yaml
+nameFormats:
+  - type: "Microsoft.Authorization/policySetDefinitions"
+    nameFormat: "%s/providers/Microsoft.Authorization/policySetDefinitions/%s"
+    nameMatchType: "IDExact"
+    nameFormatArguments:
+      - "parent_id"
+      - "name"
+```
+
+**Why IDExact for Policy Artifacts?**
+- Prevents matching assignments with the same name across different management groups
+- Eliminates cross-type matches (assignments vs definitions)
+- Ensures deterministic one-to-one resource mapping
+- Critical when policy names are reused across organizational hierarchy
 
 #### Delete Commands
 
