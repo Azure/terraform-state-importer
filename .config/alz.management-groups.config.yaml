@@ -8,7 +8,7 @@ managementGroupIDs:
 
 # Use this setting to filter out deployed resources in Azure that are not important for the migration to avoid noise
 ignoreResourceIDPatterns:
-  # Ignore policy assignments at subscriptipn scope
+  # Ignore policy assignments at subscription scope
   - "/subscriptions/.*/providers/Microsoft.Authorization/policyAssignments"
 
 # Use this setting to filter out resources from the Terraform module that are not important for the migration to avoid noise
@@ -90,25 +90,29 @@ resourceGraphQueries:
 
 # Use this section to specify any custom name formats for mapping where a standard `name` property does not exist or is not unique
 nameFormats:
-  - type: Microsoft.Authorization/policyAssignments
+  - type: azapi_resource
+    subType: Microsoft.Authorization/policyAssignments
     nameFormat: "%s/providers/Microsoft.Authorization/policyAssignments/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
       - parent_id
       - name
-  - type: Microsoft.Authorization/policyDefinitions
+  - type: azapi_resource
+    subType: Microsoft.Authorization/policyDefinitions
     nameFormat: "%s/providers/Microsoft.Authorization/policyDefinitions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
       - parent_id
       - name
-  - type: Microsoft.Authorization/policySetDefinitions
+  - type: azapi_resource
+    subType: Microsoft.Authorization/policySetDefinitions
     nameFormat: "%s/providers/Microsoft.Authorization/policySetDefinitions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:
       - parent_id
       - name
-  - type: Microsoft.Management/managementGroups/subscriptions
+  - type: azapi_resource
+    subType: Microsoft.Management/managementGroups/subscriptions
     nameFormat: "%s/subscriptions/%s"
     nameMatchType: IDEndsWith
     nameFormatArguments:

@@ -73,6 +73,7 @@ terraform-state-importer [global-flags] run [command-flags]
 | `--planSubscriptionID` | `-s` | Override subscription ID for Terraform plan operations | (uses az cli default) |
 | `--skipInitPlanShow` | `-x` | Skip terraform init, plan, and show steps (for debugging) | `false` |
 | `--skipInitOnly` | `-k` | Skip only the terraform init step | `false` |
+| `--skipInitUpgrade` | `-u` | Skip the -upgrade flag on terraform init | `false` |
 
 ### Command Usage Examples
 
