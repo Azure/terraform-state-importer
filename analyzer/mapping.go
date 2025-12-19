@@ -132,6 +132,10 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 		}
 
 		for _, graphResource := range graphResources {
+			// Prefilter by Azure resource type when subtype is known (e.g., azapi_resource)
+			if resource.SubType != "" && !strings.EqualFold(graphResource.Type, resource.SubType) {
+				continue
+			}
 			if resource.ResourceNameMatchType == types.NameMatchTypeExact && strings.ToLower(graphResource.Name) == strings.ToLower(resource.ResourceName) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
 			}
@@ -141,6 +145,10 @@ func (importer *MappingClient) mapResourcesFromGraphToPlan(graphResources []*typ
 			}
 
 			if resource.ResourceNameMatchType == types.NameMatchTypeIDEndsWith && strings.HasSuffix(strings.ToLower(graphResource.ID), strings.ToLower(resource.ResourceName)) {
+				resource.MappedResources = append(resource.MappedResources, graphResource)
+			}
+
+			if resource.ResourceNameMatchType == types.NameMatchTypeIDExact && strings.EqualFold(graphResource.ID, resource.ResourceName) {
 				resource.MappedResources = append(resource.MappedResources, graphResource)
 			}
 		}

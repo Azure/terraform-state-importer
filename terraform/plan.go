@@ -230,21 +230,66 @@ func (planClient *PlanClient) mapPropertiesAndNames(resources []*types.PlanResou
 
 		foundName := false
 
-		for _, nameFormat := range planClient.NameFormats {
-			if (nameFormat.Type == resource.Type && nameFormat.SubType == "") || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
-				nameFormatArguments := []any{}
-				for _, arg := range nameFormat.NameFormatArguments {
-					if val, ok := resource.Properties[arg]; ok {
-						nameFormatArguments = append(nameFormatArguments, val.(string))
-					} else {
-						planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
+		// Pass 1: Prefer exact SubType matches
+		if resource.SubType != "" {
+			// First: exact SubType entries (nameFormat.Type == resource.SubType)
+			for _, nameFormat := range planClient.NameFormats {
+				if nameFormat.Type == resource.SubType {
+					nameFormatArguments := []any{}
+					for _, arg := range nameFormat.NameFormatArguments {
+						if val, ok := resource.Properties[arg]; ok {
+							nameFormatArguments = append(nameFormatArguments, val.(string))
+						} else {
+							planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
+						}
+					}
+
+					resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
+					resource.ResourceNameMatchType = nameFormat.NameMatchType
+					foundName = true
+					break
+				}
+			}
+			// Second: broader Type + matching SubType entries
+			if !foundName {
+				for _, nameFormat := range planClient.NameFormats {
+					if nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType {
+						nameFormatArguments := []any{}
+						for _, arg := range nameFormat.NameFormatArguments {
+							if val, ok := resource.Properties[arg]; ok {
+								nameFormatArguments = append(nameFormatArguments, val.(string))
+							} else {
+								planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
+							}
+						}
+
+						resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
+						resource.ResourceNameMatchType = nameFormat.NameMatchType
+						foundName = true
+						break
 					}
 				}
+			}
+		}
 
-				resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
-				resource.ResourceNameMatchType = nameFormat.NameMatchType
-				foundName = true
-				break
+		// Pass 2: Fallback to Type matches when no SubType-specific format was found
+		if !foundName {
+			for _, nameFormat := range planClient.NameFormats {
+				if (nameFormat.Type == resource.Type && nameFormat.SubType == "") || (nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType) {
+					nameFormatArguments := []any{}
+					for _, arg := range nameFormat.NameFormatArguments {
+						if val, ok := resource.Properties[arg]; ok {
+							nameFormatArguments = append(nameFormatArguments, val.(string))
+						} else {
+							planClient.Logger.Fatalf("Name format argument %s not found in resource properties for %s", arg, resource.Address)
+						}
+					}
+
+					resource.ResourceName = fmt.Sprintf(nameFormat.NameFormat, nameFormatArguments...)
+					resource.ResourceNameMatchType = nameFormat.NameMatchType
+					foundName = true
+					break
+				}
 			}
 		}
 

@@ -370,6 +370,115 @@ func Test_mapResourcesFromGraphToPlan_IDEndsWithMatch(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
+func Test_mapResourcesFromGraphToPlan_SubTypePrefilter_AvoidsDefinitions_ForAssignments(t *testing.T) {
+	logger := logrus.New()
+	// Two resources with same name fragment, different types
+	assignment := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz-aks-corp/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
+	definition := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+
+	graphResources := []*types.GraphResource{assignment, definition}
+	planResources := []*types.PlanResource{
+		{
+			Address: "addr1",
+			Type:    "azapi_resource",
+			SubType: "Microsoft.Authorization/policyAssignments",
+			// Match by ID suffix against assignment only
+			ResourceName:          "policyAssignments/Allow-Vnet-Peering",
+			ResourceNameMatchType: types.NameMatchTypeIDEndsWith,
+		},
+	}
+
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, assignment.ID, mapped[0].ResourceID)
+	// We may still report UnusedResourceID for the definition; important is we didn't create MultipleResourceIDs
+	for _, iss := range issues {
+		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_SubTypePrefilter_DefinitionVsSetDefinition(t *testing.T) {
+	logger := logrus.New()
+	definition := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Enforce-Tag", Name: "Enforce-Tag", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+	setdef := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policySetDefinitions/Enforce-Tag", Name: "Enforce-Tag", Type: "Microsoft.Authorization/policySetDefinitions", Location: "n/a"}
+
+	graphResources := []*types.GraphResource{definition, setdef}
+	planResources := []*types.PlanResource{
+		{
+			Address:               "addr1",
+			Type:                  "azapi_resource",
+			SubType:               "Microsoft.Authorization/policyDefinitions",
+			ResourceName:          "policyDefinitions/Enforce-Tag",
+			ResourceNameMatchType: types.NameMatchTypeIDEndsWith,
+		},
+	}
+
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, definition.ID, mapped[0].ResourceID)
+	for _, iss := range issues {
+		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch(t *testing.T) {
+	logger := logrus.New()
+	id := "/providers/Microsoft.Management/managementGroups/alz-aks-public/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering"
+	assignment := &types.GraphResource{ID: id, Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
+	other := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz-aks-corp/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
+
+	graphResources := []*types.GraphResource{assignment, other}
+	planResources := []*types.PlanResource{
+		{
+			Address:               "addr1",
+			Type:                  "azapi_resource",
+			SubType:               "Microsoft.Authorization/policyAssignments",
+			ResourceName:          id,
+			ResourceNameMatchType: types.NameMatchTypeIDExact,
+		},
+	}
+
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, id, mapped[0].ResourceID)
+	for _, iss := range issues {
+		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch_Definition(t *testing.T) {
+	logger := logrus.New()
+	id := "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Enforce-Tag"
+	def := &types.GraphResource{ID: id, Name: "Enforce-Tag", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+	other := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Other", Name: "Other", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+
+	graphResources := []*types.GraphResource{def, other}
+	planResources := []*types.PlanResource{
+		{
+			Address:               "addr1",
+			Type:                  "azapi_resource",
+			SubType:               "Microsoft.Authorization/policyDefinitions",
+			ResourceName:          id,
+			ResourceNameMatchType: types.NameMatchTypeIDExact,
+		},
+	}
+
+	client := &MappingClient{Logger: logger}
+	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, id, mapped[0].ResourceID)
+	for _, iss := range issues {
+		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
+	}
+	assert.Empty(t, errs)
+}
+
 func Test_mapResourcesFromGraphToPlan_MultipleMatches_LocationFilter(t *testing.T) {
 	logger := logrus.New()
 	graphResources := []*types.GraphResource{

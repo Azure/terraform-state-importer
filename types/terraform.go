@@ -20,4 +20,5 @@ const (
 	NameMatchTypeExact      NameMatchType = "Exact"
 	NameMatchTypeIDContains NameMatchType = "IDContains"
 	NameMatchTypeIDEndsWith NameMatchType = "IDEndsWith"
+	NameMatchTypeIDExact    NameMatchType = "IDExact"
 )
