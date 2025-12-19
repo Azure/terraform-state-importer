@@ -79,14 +79,9 @@ func (mappingClient *MappingClient) Map() {
 	destroyBlocks := []types.DestroyBlock{}
 	for _, finalMappedResource := range finalMappedResources {
 		if finalMappedResource.ActionType == types.ActionTypeUse && finalMappedResource.Type == types.MappedResourceTypeTerraform {
-			resourceID := finalMappedResource.ResourceID
-			if finalMappedResource.ResourceAPIVersion != "" {
-				resourceID = fmt.Sprintf("%s?api-version=%s", resourceID, finalMappedResource.ResourceAPIVersion)
-			}
-
 			importBlock := types.ImportBlock{
 				To: finalMappedResource.ResourceAddress,
-				ID: resourceID,
+				ID: finalMappedResource.ResourceID,
 			}
 			importBlocks = append(importBlocks, importBlock)
 		}
