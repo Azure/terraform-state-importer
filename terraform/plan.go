@@ -27,13 +27,14 @@ type PlanClient struct {
 	IgnoreResourceTypePatterns []string
 	SkipInitPlanShow           bool
 	SkipInitOnly               bool
+	SkipInitUpgrade            bool
 	PropertyMappings           []types.PropertyMapping
 	NameFormats                []types.NameFormat
 	JsonClient                 json.IJsonClient
 	Logger                     *logrus.Logger
 }
 
-func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, propertyMappings []types.PropertyMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
+func NewPlanClient(terraformModulePath string, workingFolderPath string, subscriptionID string, ignoreResourceTypePatterns []string, skipInitPlanShow bool, skipInitOnly bool, skipInitUpgrade bool, propertyMappings []types.PropertyMapping, nameFormats []types.NameFormat, jsonClient json.IJsonClient, logger *logrus.Logger) *PlanClient {
 	return &PlanClient{
 		TerraformModulePath:        terraformModulePath,
 		WorkingFolderPath:          workingFolderPath,
@@ -41,6 +42,7 @@ func NewPlanClient(terraformModulePath string, workingFolderPath string, subscri
 		IgnoreResourceTypePatterns: ignoreResourceTypePatterns,
 		SkipInitPlanShow:           skipInitPlanShow,
 		SkipInitOnly:               skipInitOnly,
+		SkipInitUpgrade:            skipInitUpgrade,
 		PropertyMappings:           propertyMappings,
 		NameFormats:                nameFormats,
 		JsonClient:                 jsonClient,
@@ -265,7 +267,12 @@ func (planClient *PlanClient) mapPropertiesAndNames(resources []*types.PlanResou
 }
 
 func (planClient *PlanClient) executeTerraformInit(chDir string) {
-	cmd := exec.Command("terraform", chDir, "init", "-upgrade")
+	var cmd *exec.Cmd
+	if planClient.SkipInitUpgrade {
+		cmd = exec.Command("terraform", chDir, "init")
+	} else {
+		cmd = exec.Command("terraform", chDir, "init", "-upgrade")
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

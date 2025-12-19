@@ -199,6 +199,7 @@ Examples:
 			viper.GetStringSlice("ignoreResourceTypePatterns"),
 			viper.GetBool("skipInitPlanShow"),
 			viper.GetBool("skipInitOnly"),
+			viper.GetBool("skipInitUpgrade"),
 			propertyMappings,
 			nameFormats,
 			jsonClient,
@@ -250,6 +251,8 @@ func init() {
 	viper.BindPFlag("skipInitPlanShow", runCmd.PersistentFlags().Lookup("skipInitPlanShow"))
 	runCmd.PersistentFlags().BoolP("skipInitOnly", "k", false, "Skip init step")
 	viper.BindPFlag("skipInitOnly", runCmd.PersistentFlags().Lookup("skipInitOnly"))
+	runCmd.PersistentFlags().BoolP("skipInitUpgrade", "u", false, "Skip -upgrade flag on terraform init")
+	viper.BindPFlag("skipInitUpgrade", runCmd.PersistentFlags().Lookup("skipInitUpgrade"))
 	runCmd.PersistentFlags().BoolP("planAsTextOnly", "p", false, "Run the tool to generate a textual plan only")
 	viper.BindPFlag("planAsTextOnly", runCmd.PersistentFlags().Lookup("planAsTextOnly"))
 	runCmd.PersistentFlags().StringP("planSubscriptionID", "s", "", "Subscription ID to use for terraform plan if not using the az cli subscription ID")
