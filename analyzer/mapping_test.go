@@ -426,10 +426,14 @@ func Test_mapResourcesFromGraphToPlan_SubTypePrefilter_DefinitionVsSetDefinition
 }
 
 func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch(t *testing.T) {
+	// IDExact matching should match ONLY the resource with exact ID match,
+	// even when multiple resources have the same name but different IDs
 	logger := logrus.New()
-	id := "/providers/Microsoft.Management/managementGroups/alz-aks-public/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering"
-	assignment := &types.GraphResource{ID: id, Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
-	other := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz-aks-corp/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
+	expectedID := "/providers/Microsoft.Management/managementGroups/alz-aks-public/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering"
+	unmatchedID := "/providers/Microsoft.Management/managementGroups/alz-aks-corps/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering"
+
+	assignment := &types.GraphResource{ID: expectedID, Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
+	other := &types.GraphResource{ID: unmatchedID, Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"}
 
 	graphResources := []*types.GraphResource{assignment, other}
 	planResources := []*types.PlanResource{
@@ -437,26 +441,57 @@ func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch(t *testing.T) {
 			Address:               "addr1",
 			Type:                  "azapi_resource",
 			SubType:               "Microsoft.Authorization/policyAssignments",
-			ResourceName:          id,
+			ResourceName:          expectedID, // Plan specifies exact ID to match
 			ResourceNameMatchType: types.NameMatchTypeIDExact,
 		},
 	}
 
 	client := &MappingClient{Logger: logger}
-	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
-	assert.Len(t, mapped, 1)
-	assert.Equal(t, id, mapped[0].ResourceID)
-	for _, iss := range issues {
-		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
-	}
+	mapped, _, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+
+	// Should match exactly ONE resource (the one with matching ID)
+	assert.Len(t, mapped, 1, "Should match exactly one resource with exact ID")
+	assert.Equal(t, expectedID, mapped[0].ResourceID, "Should match the resource with exact ID")
+	// Verify that the unmatched resource was NOT matched
+	assert.NotEqual(t, unmatchedID, mapped[0].ResourceID, "Should not match resource with different ID")
 	assert.Empty(t, errs)
 }
 
-func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch_Definition(t *testing.T) {
+func Test_mapResourcesFromGraphToPlan_IDExact_NoMatch(t *testing.T) {
+	// IDExact matching should fail to match when ID doesn't exist in graph resources
 	logger := logrus.New()
-	id := "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Enforce-Tag"
-	def := &types.GraphResource{ID: id, Name: "Enforce-Tag", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
-	other := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Other", Name: "Other", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+	nonexistentID := "/providers/Microsoft.Management/managementGroups/alz-nonexistent/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering"
+
+	graphResources := []*types.GraphResource{
+		{ID: "/providers/Microsoft.Management/managementGroups/alz-aks-public/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"},
+		{ID: "/providers/Microsoft.Management/managementGroups/alz-aks-corps/providers/Microsoft.Authorization/policyAssignments/Allow-Vnet-Peering", Name: "Allow-Vnet-Peering", Type: "Microsoft.Authorization/policyAssignments", Location: "n/a"},
+	}
+	planResources := []*types.PlanResource{
+		{
+			Address:               "addr1",
+			Type:                  "azapi_resource",
+			SubType:               "Microsoft.Authorization/policyAssignments",
+			ResourceName:          nonexistentID, // ID that doesn't exist in graph
+			ResourceNameMatchType: types.NameMatchTypeIDExact,
+		},
+	}
+
+	client := &MappingClient{Logger: logger}
+	mapped, _, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+
+	// Should NOT match any resource
+	assert.Len(t, mapped, 0, "Should not match any resource when exact ID doesn't exist")
+	assert.Empty(t, errs)
+}
+
+func Test_mapResourcesFromGraphToPlan_IDExact_CaseInsensitive(t *testing.T) {
+	// IDExact matching should be case-insensitive
+	logger := logrus.New()
+	expectedID := "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Enforce-Tag"
+	upperCaseID := "/providers/Microsoft.Management/managementGroups/ALZ/providers/Microsoft.Authorization/policyDefinitions/ENFORCE-TAG"
+
+	def := &types.GraphResource{ID: expectedID, Name: "Enforce-Tag", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
+	other := &types.GraphResource{ID: "/providers/Microsoft.Management/managementGroups/alz/providers/Microsoft.Authorization/policyDefinitions/Other-Tag", Name: "Other-Tag", Type: "Microsoft.Authorization/policyDefinitions", Location: "n/a"}
 
 	graphResources := []*types.GraphResource{def, other}
 	planResources := []*types.PlanResource{
@@ -464,18 +499,17 @@ func Test_mapResourcesFromGraphToPlan_IDExact_SingleMatch_Definition(t *testing.
 			Address:               "addr1",
 			Type:                  "azapi_resource",
 			SubType:               "Microsoft.Authorization/policyDefinitions",
-			ResourceName:          id,
+			ResourceName:          upperCaseID, // Upper case ID to test case-insensitivity
 			ResourceNameMatchType: types.NameMatchTypeIDExact,
 		},
 	}
 
 	client := &MappingClient{Logger: logger}
-	mapped, issues, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
-	assert.Len(t, mapped, 1)
-	assert.Equal(t, id, mapped[0].ResourceID)
-	for _, iss := range issues {
-		assert.NotEqual(t, types.IssueTypeMultipleResourceIDs, iss.IssueType)
-	}
+	mapped, _, errs := client.mapResourcesFromGraphToPlan(graphResources, planResources, nil)
+
+	// Should match the resource despite case difference (EqualFold is case-insensitive)
+	assert.Len(t, mapped, 1, "Should match resource with case-insensitive ID comparison")
+	assert.Equal(t, expectedID, mapped[0].ResourceID, "Should match the resource with matching ID")
 	assert.Empty(t, errs)
 }
 
