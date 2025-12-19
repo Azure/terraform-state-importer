@@ -330,7 +330,6 @@ Configure custom naming patterns for resources that need special mapping logic. 
 - Names are composite values (e.g., `solution_name(workspace_name)`)
 - You need to match resources by ID patterns rather than exact names
 - Resources are nested and need hierarchical matching
-- Working with `azapi_resource` types that need subtype-specific matching
 
 **Exact Name Matching:**
 ```yaml
@@ -354,13 +353,8 @@ nameFormats:
       - "name"
 ```
 
-**SubType-Aware Matching (for azapi_resource):**
+**SubType-Aware Matching:**
 
-For `azapi_resource` types, you can specify matching rules based on the Azure resource SubType. The tool applies name formats with deterministic precedence:
-
-1. **Exact SubType match**: `nameFormat.Type == resource.SubType`
-2. **Type+SubType match**: `nameFormat.Type == resource.Type && nameFormat.SubType == resource.SubType`
-3. **Type-only match**: `nameFormat.Type == resource.Type` (fallback)
 
 ```yaml
 nameFormats:
